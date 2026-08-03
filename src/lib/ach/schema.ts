@@ -33,6 +33,11 @@ export type FormFieldDef = {
   picker?: "txid" | "branch" | null;
   metaFrom?: "txid" | "branch" | null;
   optionsFrom?: "authOptions";
+  /**
+   * 是否可在明細列篩選。預設 true。
+   * 設為 false 可從篩選列隱藏該欄。
+   */
+  filterable?: boolean;
   export?: {
     charset?: Charset;
     length?: number;
@@ -80,6 +85,9 @@ export type AuthOptionDef = {
   desc: string;
 };
 
+/** 成品輸出格式：txt 固定長度｜html 報表｜js 資料模組 */
+export type ExportFormatId = "txt" | "html" | "js";
+
 export type FormatSchema = {
   code: string;
   shortCode: string;
@@ -93,6 +101,13 @@ export type FormatSchema = {
     sumAmount: boolean;
     amountKey: string | null;
     authOptions: boolean;
+    /** 是否啟用明細篩選列（預設 true） */
+    detailFilter?: boolean;
+    /**
+     * 成品輸出格式清單。預設 ["txt","html","js"]。
+     * 可只開部分，例如 ["txt","html"]。
+     */
+    exportFormats?: ExportFormatId[];
   };
   authOptions?: AuthOptionDef[];
   form: {

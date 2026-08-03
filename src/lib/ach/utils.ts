@@ -29,7 +29,10 @@ export function spaces(n: number): string {
  * - 西元 8 碼 YYYYMMDD（年>2000）→ 民國 8 碼
  * - 民國 7 碼 YYYMMDD → 左補 0 成 8 碼
  */
-export function normalizeSubmitDate(raw: string): { value: string; convertedFromAd?: boolean } {
+export function normalizeSubmitDate(raw: string): {
+  value: string;
+  convertedFromAd?: boolean;
+} {
   const digits = safeDigits(raw).slice(0, 8);
   if (digits.length === 8 && Number(digits.slice(0, 4)) > 2000) {
     const roc = adToRoc(digits);
@@ -50,7 +53,11 @@ export function adToRoc(yyyymmdd: string): string | null {
   const d = yyyymmdd.slice(6, 8);
   const dt = new Date(`${y}-${m}-${d}T00:00:00`);
   if (Number.isNaN(dt.getTime())) return null;
-  if (dt.getFullYear() !== y || dt.getMonth() + 1 !== Number(m) || dt.getDate() !== Number(d)) {
+  if (
+    dt.getFullYear() !== y ||
+    dt.getMonth() + 1 !== Number(m) ||
+    dt.getDate() !== Number(d)
+  ) {
     return null;
   }
   return padLeft(y - 1911, 4) + m + d;
@@ -63,7 +70,8 @@ export function rocToDate(roc: string): Date | null {
   const m = Number(roc.slice(4, 6));
   const d = Number(roc.slice(6, 8));
   const dt = new Date(y, m - 1, d);
-  if (dt.getFullYear() !== y || dt.getMonth() + 1 !== m || dt.getDate() !== d) return null;
+  if (dt.getFullYear() !== y || dt.getMonth() + 1 !== m || dt.getDate() !== d)
+    return null;
   return dt;
 }
 
@@ -71,13 +79,21 @@ export function rocToDate(roc: string): Date | null {
 export function todayRoc(): string {
   const now = new Date();
   const y = now.getFullYear() - 1911;
-  return padLeft(y, 4) + padLeft(now.getMonth() + 1, 2) + padLeft(now.getDate(), 2);
+  return (
+    padLeft(y, 4) +
+    padLeft(now.getMonth() + 1, 2) +
+    padLeft(now.getDate(), 2)
+  );
 }
 
 /** HHMMSS */
 export function nowHms(): string {
   const now = new Date();
-  return padLeft(now.getHours(), 2) + padLeft(now.getMinutes(), 2) + padLeft(now.getSeconds(), 2);
+  return (
+    padLeft(now.getHours(), 2) +
+    padLeft(now.getMinutes(), 2) +
+    padLeft(now.getSeconds(), 2)
+  );
 }
 
 /** 帳號左側補 0 至 16 碼 */
@@ -88,8 +104,12 @@ export function padAccount16(value: string): string {
   return padLeft(digits, 16);
 }
 
-export function downloadTextFile(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+export function downloadTextFile(
+  filename: string,
+  content: string,
+  mime = "text/plain;charset=utf-8",
+) {
+  const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

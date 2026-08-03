@@ -18,9 +18,13 @@
     "electron:dev": "npm run electron:renderer && electron .",
     "electron:build": "npm run build && electron-builder --dir",
     "test:ach": "node scripts/test-ach.mjs",
-    "electron:renderer": "vite build --config vite.electron.config.ts",
+    "electron:renderer": "npm run build:web && mkdir -p dist-electron && rm -rf dist-electron/renderer && cp -a dist-static dist-electron/renderer",
     "electron:pack": "npm run electron:renderer && electron-builder --win portable zip --x64 --publish never",
-    "electron:pack:dir": "npm run electron:renderer && electron-builder --win dir --x64 --publish never"
+    "electron:pack:dir": "npm run electron:renderer && electron-builder --win dir --x64 --publish never",
+    "build:web": "vite build --config vite.static.config.ts",
+    "pack:web": "node scripts/pack-static.mjs",
+    "preview:web": "vite preview --config vite.static.config.ts",
+    "dev:web": "vite --config vite.static.config.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.3",
@@ -98,9 +102,9 @@
     "vite": "^8.1.0",
     "vite-tsconfig-paths": "^6.1.1"
   },
-  "description": "代收建檔小程式 — ACH P01/P02 固定長度檔產生（JSON 參數化）",
+  "description": "代收建檔小程式 — ACH 固定長度檔產生（JSON 參數化）純 HTML + JS 靜態版",
   "main": "electron/main.cjs",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "EzZeng",
   "license": "MIT",
   "homepage": "https://github.com/EzZeng/ach-filing-app",

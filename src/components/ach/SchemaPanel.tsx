@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Braces, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useRefStore } from "@/lib/ach/store";
 import { assertRecordLengths } from "@/lib/ach/engine";
+import { EXPORT_FORMAT_META, enabledExportFormats } from "@/lib/ach/exportFormats";
 import type { FormatSchema, RecordFieldDef } from "@/lib/ach/schema";
 
 function FieldTable({ title, fields }: { title: string; fields: RecordFieldDef[] }) {
@@ -71,7 +72,7 @@ function FormFieldTable({ schema }: { schema: FormatSchema }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border">
       <div className="bg-surface-2 px-3 py-2">
-        <h4 className="text-sm font-bold">表單欄位（輸入檢核）</h4>
+        <h4 className="text-sm font-bold">表單欄位（輸入檢核／篩選）</h4>
       </div>
       <div className="max-h-80 overflow-auto">
         <table className="data-table text-xs">
@@ -82,6 +83,7 @@ function FormFieldTable({ schema }: { schema: FormatSchema }) {
               <th>標籤</th>
               <th>長度</th>
               <th>charset</th>
+              <th>可篩選</th>
               <th>檢核規則</th>
             </tr>
           </thead>
@@ -93,6 +95,13 @@ function FormFieldTable({ schema }: { schema: FormatSchema }) {
                 <td>{f.label}</td>
                 <td className="font-mono">{f.length}</td>
                 <td className="font-mono">{f.charset}</td>
+                <td className="font-mono">
+                  {f.section === "明細"
+                    ? f.filterable === false
+                      ? "否"
+                      : "是"
+                    : "—"}
+                </td>
                 <td className="font-mono text-muted">
                   {(f.validation?.rules ?? []).map((r) => r.type).join(", ") || "—"}
                 </td>
@@ -116,6 +125,11 @@ export function SchemaPanel() {
     [schema],
   );
 
+  const exportFmts = useMemo(
+    () => (schema ? enabledExportFormats(schema) : []),
+    [schema],
+  );
+
   if (!schema) {
     return (
       <div className="card p-8 text-center text-muted">尚無格式定義</div>
@@ -131,7 +145,7 @@ export function SchemaPanel() {
             <div>
               <h2 className="text-lg font-bold">格式參數（JSON）</h2>
               <p className="text-sm text-muted">
-                檔案代號、欄位、長度、英數字檢核皆由{" "}
+                檔案代號、欄位、長度、英數字檢核、明細篩選、成品輸出格式皆由{" "}
                 <code className="font-mono text-xs">public/data/formats/*.json</code>{" "}
                 定義
               </p>
@@ -179,6 +193,17 @@ export function SchemaPanel() {
           </div>
         </div>
 
+        <div className="mb-4 rounded-lg border border-border bg-surface-2/60 px-3 py-2">
+          <div className="text-xs text-muted">成品輸出 formats.exportFormats</div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {exportFmts.map((f) => (
+              <span key={f} className="badge badge-ok font-mono">
+                {f} · {EXPORT_FORMAT_META[f].label}
+              </span>
+            ))}
+          </div>
+        </div>
+
         {lengthCheck.length > 0 && (
           <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
             {lengthCheck.map((e) => (
@@ -188,9 +213,11 @@ export function SchemaPanel() {
         )}
 
         <p className="mb-3 text-sm text-muted">
-          新增檔案代號：在{" "}
-          <code className="font-mono text-xs">formats/index.json</code> 登錄，並新增對應{" "}
-          <code className="font-mono text-xs">{`{code}.json`}</code> 即可，無需改程式碼。
+          明細篩選：{" "}
+          <code className="font-mono text-xs">features.detailFilter</code>＋ 各明細欄{" "}
+          <code className="font-mono text-xs">filterable</code>。 成品：{" "}
+          <code className="font-mono text-xs">features.exportFormats</code> ={" "}
+          <code className="font-mono text-xs">["txt","html","js"]</code>。
         </p>
       </div>
 

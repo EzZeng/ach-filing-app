@@ -27,3 +27,4 @@ src/lib/db.ts
 src/lib/multiplayer/
 src/lib/error-component.tsx
 src/components/created-with-grok-banner.tsx
+dist-static/

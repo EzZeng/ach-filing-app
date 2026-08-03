@@ -10,7 +10,13 @@
   "features": {
     "sumAmount": false,
     "amountKey": null,
-    "authOptions": true
+    "authOptions": true,
+    "detailFilter": true,
+    "exportFormats": [
+      "txt",
+      "html",
+      "js"
+    ]
   },
   "authOptions": [
     {
@@ -48,16 +54,31 @@
         "length": 8,
         "charset": "digit",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "required", "message": "日期長度請輸入八碼" },
-            { "type": "exactLength", "length": 8, "message": "日期長度請輸入八碼" },
-            { "type": "rocDate", "notPast": true }
+            {
+              "type": "required",
+              "message": "日期長度請輸入八碼"
+            },
+            {
+              "type": "exactLength",
+              "length": 8,
+              "message": "日期長度請輸入八碼"
+            },
+            {
+              "type": "rocDate",
+              "notPast": true
+            }
           ]
         },
         "picker": null,
-        "ui": { "mono": true, "colSpan": 1 }
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
       },
       {
         "key": "txid",
@@ -67,15 +88,24 @@
         "length": 3,
         "charset": "digit",
         "required": false,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "txid", "minValue": 500, "message": "交易代號錯誤" }
+            {
+              "type": "txid",
+              "minValue": 500,
+              "message": "交易代號錯誤"
+            }
           ]
         },
         "picker": "txid",
         "metaFrom": "txid",
-        "ui": { "mono": true, "colSpan": 1 }
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
       },
       {
         "key": "bankCode",
@@ -85,16 +115,27 @@
         "length": 7,
         "charset": "digit",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "required", "message": "未輸入" },
-            { "type": "branchCode", "message": "銀行代號錯誤" }
+            {
+              "type": "required",
+              "message": "未輸入"
+            },
+            {
+              "type": "branchCode",
+              "message": "銀行代號錯誤"
+            }
           ]
         },
         "picker": "branch",
         "metaFrom": "branch",
-        "ui": { "mono": true, "colSpan": 1 }
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
       },
       {
         "key": "account",
@@ -104,15 +145,29 @@
         "length": 16,
         "charset": "digit",
         "required": true,
-        "pad": { "side": "left", "char": "0", "onBlur": true },
+        "pad": {
+          "side": "left",
+          "char": "0",
+          "onBlur": true
+        },
         "validation": {
           "rules": [
-            { "type": "required", "message": "未輸入" },
-            { "type": "exactLength", "length": 16, "message": "發動者帳號長度不符" }
+            {
+              "type": "required",
+              "message": "未輸入"
+            },
+            {
+              "type": "exactLength",
+              "length": 16,
+              "message": "發動者帳號長度不符"
+            }
           ]
         },
         "picker": null,
-        "ui": { "mono": true, "colSpan": 1 }
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
       },
       {
         "key": "taxId",
@@ -122,15 +177,30 @@
         "length": 10,
         "charset": "alnum",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "required", "message": "未輸入" },
-            { "type": "oneOfLengths", "lengths": [8, 10], "message": "統編應為8或10碼" }
+            {
+              "type": "required",
+              "message": "未輸入"
+            },
+            {
+              "type": "oneOfLengths",
+              "lengths": [
+                8,
+                10
+              ],
+              "message": "統編應為8或10碼"
+            }
           ]
         },
         "picker": null,
-        "ui": { "mono": true, "colSpan": 1 }
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
       },
       {
         "key": "admark",
@@ -140,15 +210,23 @@
         "length": 1,
         "charset": "alnum",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "optionsFrom": "authOptions",
         "validation": {
           "rules": [
-            { "type": "required", "message": "未輸入" }
+            {
+              "type": "required",
+              "message": "未輸入"
+            }
           ]
         },
         "picker": null,
-        "ui": { "mono": false, "colSpan": 1 }
+        "ui": {
+          "mono": false,
+          "colSpan": 1
+        }
       }
     ],
     "detail": [
@@ -159,20 +237,34 @@
         "length": 7,
         "charset": "digit",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "requiredIfAny", "message": "收受者銀行代號未輸入" },
-            { "type": "branchCode", "message": "收受者銀行代號錯誤" }
+            {
+              "type": "requiredIfAny",
+              "message": "收受者銀行代號未輸入"
+            },
+            {
+              "type": "branchCode",
+              "message": "收受者銀行代號錯誤"
+            }
           ]
         },
         "picker": "branch",
         "export": {
           "charset": "digit",
           "length": 7,
-          "pad": { "side": "none" }
+          "pad": {
+            "side": "none"
+          }
         },
-        "ui": { "mono": true, "minWidth": "7rem" }
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
       },
       {
         "key": "account",
@@ -181,20 +273,37 @@
         "length": 16,
         "charset": "digit",
         "required": true,
-        "pad": { "side": "left", "char": "0", "onBlur": true },
+        "pad": {
+          "side": "left",
+          "char": "0",
+          "onBlur": true
+        },
         "validation": {
           "rules": [
-            { "type": "requiredIfAny", "message": "收受者帳號未輸入" },
-            { "type": "maxLength", "length": 16, "message": "收受者帳號長度不符" }
+            {
+              "type": "requiredIfAny",
+              "message": "收受者帳號未輸入"
+            },
+            {
+              "type": "maxLength",
+              "length": 16,
+              "message": "收受者帳號長度不符"
+            }
           ]
         },
         "picker": null,
         "export": {
           "charset": "digit",
           "length": 16,
-          "pad": { "side": "none" }
+          "pad": {
+            "side": "none"
+          }
         },
-        "ui": { "mono": true, "minWidth": "9rem" }
+        "ui": {
+          "mono": true,
+          "minWidth": "9rem"
+        },
+        "filterable": true
       },
       {
         "key": "taxId",
@@ -203,20 +312,39 @@
         "length": 10,
         "charset": "alnum",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "requiredIfAny", "message": "收受者統一編號未輸入" },
-            { "type": "oneOfLengths", "lengths": [8, 10], "message": "統編應為8或10碼" }
+            {
+              "type": "requiredIfAny",
+              "message": "收受者統一編號未輸入"
+            },
+            {
+              "type": "oneOfLengths",
+              "lengths": [
+                8,
+                10
+              ],
+              "message": "統編應為8或10碼"
+            }
           ]
         },
         "picker": null,
         "export": {
           "charset": "alnum",
           "length": 10,
-          "pad": { "side": "right", "char": " " }
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
         },
-        "ui": { "mono": true, "minWidth": "7rem" }
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
       },
       {
         "key": "userNo",
@@ -225,60 +353,257 @@
         "length": 20,
         "charset": "alnum",
         "required": true,
-        "pad": { "side": "none" },
+        "pad": {
+          "side": "none"
+        },
         "validation": {
           "rules": [
-            { "type": "requiredIfAny", "message": "用戶號碼未輸入" }
+            {
+              "type": "requiredIfAny",
+              "message": "用戶號碼未輸入"
+            }
           ]
         },
         "picker": null,
         "export": {
           "charset": "alnum",
           "length": 20,
-          "pad": { "side": "right", "char": " " }
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
         },
-        "ui": { "mono": true, "minWidth": "7rem" }
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
       }
     ]
   },
   "records": {
     "header": {
       "fields": [
-        { "id": "BOF", "source": "literal", "value": "BOF", "length": 3 },
-        { "id": "CDATA", "source": "formatCode", "length": 6, "pad": { "side": "right", "char": " " } },
-        { "id": "TDATE", "source": "header", "key": "date", "length": 8, "charset": "digit" },
-        { "id": "SORG", "source": "derived", "fn": "sorg", "length": 7, "charset": "digit" },
-        { "id": "VERNO", "source": "version", "length": 3, "pad": { "side": "right", "char": " " } },
-        { "id": "FILLER", "source": "filler", "length": 193, "fill": " " }
+        {
+          "id": "BOF",
+          "source": "literal",
+          "value": "BOF",
+          "length": 3
+        },
+        {
+          "id": "CDATA",
+          "source": "formatCode",
+          "length": 6,
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        {
+          "id": "TDATE",
+          "source": "header",
+          "key": "date",
+          "length": 8,
+          "charset": "digit"
+        },
+        {
+          "id": "SORG",
+          "source": "derived",
+          "fn": "sorg",
+          "length": 7,
+          "charset": "digit"
+        },
+        {
+          "id": "VERNO",
+          "source": "version",
+          "length": 3,
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        {
+          "id": "FILLER",
+          "source": "filler",
+          "length": 193,
+          "fill": " "
+        }
       ]
     },
     "detail": {
       "fields": [
-        { "id": "SEQ", "source": "derived", "fn": "seq", "length": 6, "charset": "digit", "pad": { "side": "left", "char": "0" } },
-        { "id": "TIX", "source": "header", "key": "txid", "length": 3, "charset": "digit", "pad": { "side": "right", "char": " " } },
-        { "id": "CID", "source": "header", "key": "taxId", "length": 10, "charset": "alnum", "pad": { "side": "right", "char": " " } },
-        { "id": "RBANK", "source": "detail", "key": "bankCode", "length": 7, "charset": "digit", "pad": { "side": "none" } },
-        { "id": "RCLNO", "source": "detail", "key": "account", "length": 16, "charset": "digit", "pad": { "side": "none" } },
-        { "id": "RID", "source": "detail", "key": "taxId", "length": 10, "charset": "alnum", "pad": { "side": "right", "char": " " } },
-        { "id": "USERNO", "source": "detail", "key": "userNo", "length": 20, "charset": "alnum", "pad": { "side": "right", "char": " " } },
-        { "id": "ADMARK", "source": "header", "key": "admark", "length": 1, "charset": "alnum", "transform": "firstChar" },
-        { "id": "DATE", "source": "header", "key": "date", "length": 8, "charset": "digit" },
-        { "id": "PBANK", "source": "header", "key": "bankCode", "length": 7, "charset": "digit" },
-        { "id": "NOTE", "source": "filler", "length": 40, "fill": " " },
-        { "id": "TYPE", "source": "literal", "value": "N", "length": 1 },
-        { "id": "RCODE", "source": "filler", "length": 1, "fill": " " },
-        { "id": "LIMITAMT", "source": "filler", "length": 8, "fill": " " },
-        { "id": "CNTYPE", "source": "filler", "length": 1, "fill": " " },
-        { "id": "EDATE", "source": "filler", "length": 8, "fill": " " },
-        { "id": "NOTEB", "source": "filler", "length": 20, "fill": " " },
-        { "id": "FILLER", "source": "filler", "length": 53, "fill": " " }
+        {
+          "id": "SEQ",
+          "source": "derived",
+          "fn": "seq",
+          "length": 6,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          }
+        },
+        {
+          "id": "TIX",
+          "source": "header",
+          "key": "txid",
+          "length": 3,
+          "charset": "digit",
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        {
+          "id": "CID",
+          "source": "header",
+          "key": "taxId",
+          "length": 10,
+          "charset": "alnum",
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        {
+          "id": "RBANK",
+          "source": "detail",
+          "key": "bankCode",
+          "length": 7,
+          "charset": "digit",
+          "pad": {
+            "side": "none"
+          }
+        },
+        {
+          "id": "RCLNO",
+          "source": "detail",
+          "key": "account",
+          "length": 16,
+          "charset": "digit",
+          "pad": {
+            "side": "none"
+          }
+        },
+        {
+          "id": "RID",
+          "source": "detail",
+          "key": "taxId",
+          "length": 10,
+          "charset": "alnum",
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        {
+          "id": "USERNO",
+          "source": "detail",
+          "key": "userNo",
+          "length": 20,
+          "charset": "alnum",
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        {
+          "id": "ADMARK",
+          "source": "header",
+          "key": "admark",
+          "length": 1,
+          "charset": "alnum",
+          "transform": "firstChar"
+        },
+        {
+          "id": "DATE",
+          "source": "header",
+          "key": "date",
+          "length": 8,
+          "charset": "digit"
+        },
+        {
+          "id": "PBANK",
+          "source": "header",
+          "key": "bankCode",
+          "length": 7,
+          "charset": "digit"
+        },
+        {
+          "id": "NOTE",
+          "source": "filler",
+          "length": 40,
+          "fill": " "
+        },
+        {
+          "id": "TYPE",
+          "source": "literal",
+          "value": "N",
+          "length": 1
+        },
+        {
+          "id": "RCODE",
+          "source": "filler",
+          "length": 1,
+          "fill": " "
+        },
+        {
+          "id": "LIMITAMT",
+          "source": "filler",
+          "length": 8,
+          "fill": " "
+        },
+        {
+          "id": "CNTYPE",
+          "source": "filler",
+          "length": 1,
+          "fill": " "
+        },
+        {
+          "id": "EDATE",
+          "source": "filler",
+          "length": 8,
+          "fill": " "
+        },
+        {
+          "id": "NOTEB",
+          "source": "filler",
+          "length": 20,
+          "fill": " "
+        },
+        {
+          "id": "FILLER",
+          "source": "filler",
+          "length": 53,
+          "fill": " "
+        }
       ]
     },
     "trailer": {
       "fields": [
-        { "id": "EOF", "source": "literal", "value": "EOF", "length": 3 },
-        { "id": "TCOUNT", "source": "derived", "fn": "totalCount", "length": 8, "charset": "digit", "pad": { "side": "left", "char": "0" } },
-        { "id": "FILLER", "source": "filler", "length": 209, "fill": " " }
+        {
+          "id": "EOF",
+          "source": "literal",
+          "value": "EOF",
+          "length": 3
+        },
+        {
+          "id": "TCOUNT",
+          "source": "derived",
+          "fn": "totalCount",
+          "length": 8,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          }
+        },
+        {
+          "id": "FILLER",
+          "source": "filler",
+          "length": 209,
+          "fill": " "
+        }
       ]
     }
   }

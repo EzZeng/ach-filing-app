@@ -1,52 +1,61 @@
 # 代收建檔小程式（ACH Filing）
 
 財金 ACH **P01 代收交易** / **P02 授權建檔** 固定長度文字檔產生工具。  
-由 Excel 巨集改寫，**檔案代號與欄位格式以 JSON 參數化**。
+由 Excel 巨集改寫：**檔案代號與欄位格式 JSON 參數化**。
 
-## 下載 Windows 桌面版
+## 成品形式：純 HTML + JavaScript（非 exe）
 
-Release：**[v1.0.0](https://github.com/EzZeng/ach-filing-app/releases/tag/v1.0.0)**
+主要發行物是 **靜態網頁包**（`index.html` + `assets/*.js` + `data/*.json`），  
+解壓後用瀏覽器開啟即可使用，**不需要安裝 Electron / exe**。
+
+### 下載
+
+Release：**[GitHub Releases](https://github.com/EzZeng/ach-filing-app/releases)**
 
 | 檔案 | 說明 |
 |------|------|
-| [ACH-Filing-1.0.0-portable.exe](https://github.com/EzZeng/ach-filing-app/releases/download/v1.0.0/ACH-Filing-1.0.0-portable.exe) | 免安裝可執行檔 |
-| [ACH-Filing-1.0.0-win-x64.zip](https://github.com/EzZeng/ach-filing-app/releases/download/v1.0.0/ACH-Filing-1.0.0-win-x64.zip) | Portable 壓縮包 |
+| `ACH-Filing-*-html-js.zip` | **Portable 靜態包（建議）** |
+
+### 使用
+
+```bash
+# 解壓後在資料夾內啟動本機伺服器（建議，避免 file:// 限制）
+python -m http.server 8080
+# 瀏覽器開啟 http://127.0.0.1:8080/
+```
+
+也可丟到 IIS / nginx / 內網靜態站、GitHub Pages。
 
 ## 功能
 
-- ACHP01 / ACHP02（可擴充更多檔案代號）
-- 表頭／明細即時檢核（長度、英數字、銀行代號、交易代號、民國日期）
+- ACHP01 / ACHP02（可擴充檔案代號）
+- 表頭／明細檢核、明細篩選
+- 成品輸出：**TXT**（上傳檔）、**HTML** 報表、**JS** 資料模組
 - 中信 `822*` 首錄代表行固定 `8220901`
-- 桌面版（Electron）存檔對話框；Web 版下載
 
-## 格式參數
+## 格式參數（JSON）
 
 | 路徑 | 說明 |
 |------|------|
-| `public/data/formats/index.json` | 檔案代號清單 |
-| `public/data/formats/ACHP01.json` | P01 欄位／長度／charset／輸出紀錄 |
-| `public/data/formats/ACHP02.json` | P02 同上 |
+| `data/formats/index.json` | 檔案代號清單 |
+| `data/formats/ACHP01.json` | P01 欄位／長度／charset／輸出紀錄 |
+| `data/formats/ACHP02.json` | P02 同上 |
 
-新增格式：複製 JSON → 改 `code` 與欄位 → 登錄 `index.json`。
+```json
+"features": {
+  "detailFilter": true,
+  "exportFormats": ["txt", "html", "js"]
+}
+```
 
-## Web 開發
+## 開發
 
 ```bash
 npm install
-npm run dev
+npm run dev:web      # 靜態 SPA 開發伺服器 :8080
+npm run build:web    # 輸出 dist-static/
+npm run pack:web     # 產生 release/*-html-js.zip
 ```
-
-## 桌面版打包
-
-```bash
-npm install
-npm run electron:pack
-```
-
-產物位於 `release/`：
-
-- `ACH-Filing-1.0.0-portable.exe`
-- `ACH-Filing-1.0.0-win-x64.zip`
 
 ## 授權
 

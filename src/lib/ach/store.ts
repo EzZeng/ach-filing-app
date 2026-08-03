@@ -12,6 +12,13 @@ import type {
 import { applyFieldBlur, emptyDetailRow, emptyHeader, sanitizeFieldInput } from "./engine";
 import { newRowId, todayRoc } from "./utils";
 
+/** 靜態 HTML/JS 部署時用相對路徑（配合 vite base: './'） */
+function dataUrl(path: string): string {
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+  const clean = path.replace(/^\//, "");
+  return `${base}${clean}`;
+}
+
 type RefState = {
   txids: Txid[];
   branches: Branch[];
@@ -76,9 +83,9 @@ export const useRefStore = create<RefState>((set, get) => ({
     set({ loading: true, loadError: null });
     try {
       const [tRes, bRes, iRes] = await Promise.all([
-        fetch("/data/txid.json"),
-        fetch("/data/branch.json"),
-        fetch("/data/formats/index.json"),
+        fetch(dataUrl("data/txid.json")),
+        fetch(dataUrl("data/branch.json")),
+        fetch(dataUrl("data/formats/index.json")),
       ]);
       if (!tRes.ok || !bRes.ok || !iRes.ok) throw new Error("無法載入代碼／格式定義");
       const txids = (await tRes.json()) as Txid[];
@@ -88,7 +95,7 @@ export const useRefStore = create<RefState>((set, get) => ({
       const formats: Record<string, FormatSchema> = {};
       await Promise.all(
         formatIndex.formats.map(async (entry) => {
-          const res = await fetch(`/data/formats/${entry.schemaFile}`);
+          const res = await fetch(dataUrl(`data/formats/${entry.schemaFile}`));
           if (!res.ok) throw new Error(`無法載入格式 ${entry.code}`);
           formats[entry.code] = (await res.json()) as FormatSchema;
         }),
@@ -123,55 +130,53 @@ export const useFormStore = create<FormState>()(
           forms: { ...s.forms, [schema.code]: initBundle(schema) },
         }));
       },
-      getForm: (code) => get().forms[code],
       setHeader: (code, schema, key, value) => {
+        get().ensureForm(schema);
         const field = schema.form.header.find((f) => f.key === key);
-        const nextVal = field ? sanitizeFieldInput(field, value) : value;
+        const next = field ? sanitizeFieldInput(field, value) : value;
         set((s) => {
-          const bundle = s.forms[code] ?? initBundle(schema);
+          const form = s.forms[code] ?? initBundle(schema);
           return {
             forms: {
               ...s.forms,
               [code]: {
-                ...bundle,
-                header: { ...bundle.header, [key]: nextVal },
+                ...form,
+                header: { ...form.header, [key]: next },
               },
             },
           };
         });
       },
       blurHeader: (code, schema, key) => {
+        const form = get().forms[code];
+        if (!form) return;
         const field = schema.form.header.find((f) => f.key === key);
         if (!field) return;
+        const next = applyFieldBlur(field, form.header[key] ?? "");
+        if (next === (form.header[key] ?? "")) return;
         set((s) => {
-          const bundle = s.forms[code];
-          if (!bundle) return s;
-          const cur = bundle.header[key] ?? "";
-          const next = applyFieldBlur(field, cur);
-          if (next === cur) return s;
+          const f = s.forms[code]!;
           return {
             forms: {
               ...s.forms,
-              [code]: {
-                ...bundle,
-                header: { ...bundle.header, [key]: next },
-              },
+              [code]: { ...f, header: { ...f.header, [key]: next } },
             },
           };
         });
       },
       updateRow: (code, schema, id, key, value) => {
+        get().ensureForm(schema);
         const field = schema.form.detail.find((f) => f.key === key);
-        const nextVal = field ? sanitizeFieldInput(field, value) : value;
+        const next = field ? sanitizeFieldInput(field, value) : value;
         set((s) => {
-          const bundle = s.forms[code] ?? initBundle(schema);
+          const form = s.forms[code] ?? initBundle(schema);
           return {
             forms: {
               ...s.forms,
               [code]: {
-                ...bundle,
-                rows: bundle.rows.map((r) =>
-                  r.id === id ? { ...r, [key]: nextVal } : r,
+                ...form,
+                rows: form.rows.map((r) =>
+                  r.id === id ? { ...r, [key]: next } : r,
                 ),
               },
             },
@@ -179,36 +184,39 @@ export const useFormStore = create<FormState>()(
         });
       },
       blurRow: (code, schema, id, key) => {
+        const form = get().forms[code];
+        if (!form) return;
         const field = schema.form.detail.find((f) => f.key === key);
         if (!field) return;
+        const row = form.rows.find((r) => r.id === id);
+        if (!row) return;
+        const next = applyFieldBlur(field, row[key] ?? "");
+        if (next === (row[key] ?? "")) return;
         set((s) => {
-          const bundle = s.forms[code];
-          if (!bundle) return s;
+          const f = s.forms[code]!;
           return {
             forms: {
               ...s.forms,
               [code]: {
-                ...bundle,
-                rows: bundle.rows.map((r) => {
-                  if (r.id !== id) return r;
-                  const cur = r[key] ?? "";
-                  const next = applyFieldBlur(field, cur);
-                  return next === cur ? r : { ...r, [key]: next };
-                }),
+                ...f,
+                rows: f.rows.map((r) =>
+                  r.id === id ? { ...r, [key]: next } : r,
+                ),
               },
             },
           };
         });
       },
       addRows: (code, schema, n = 10) => {
+        get().ensureForm(schema);
         set((s) => {
-          const bundle = s.forms[code] ?? initBundle(schema);
+          const form = s.forms[code] ?? initBundle(schema);
           return {
             forms: {
               ...s.forms,
               [code]: {
-                ...bundle,
-                rows: [...bundle.rows, ...makeRows(schema, n)],
+                ...form,
+                rows: [...form.rows, ...makeRows(schema, n)],
               },
             },
           };
@@ -216,74 +224,71 @@ export const useFormStore = create<FormState>()(
       },
       removeRow: (code, id) => {
         set((s) => {
-          const bundle = s.forms[code];
-          if (!bundle || bundle.rows.length <= 1) return s;
+          const form = s.forms[code];
+          if (!form) return s;
           return {
             forms: {
               ...s.forms,
               [code]: {
-                ...bundle,
-                rows: bundle.rows.filter((r) => r.id !== id),
+                ...form,
+                rows: form.rows.filter((r) => r.id !== id),
               },
             },
           };
         });
       },
       clearRows: (code, schema) => {
+        get().ensureForm(schema);
         set((s) => {
-          const bundle = s.forms[code] ?? initBundle(schema);
+          const form = s.forms[code] ?? initBundle(schema);
           return {
             forms: {
               ...s.forms,
-              [code]: { ...bundle, rows: makeRows(schema, 15) },
+              [code]: { ...form, rows: makeRows(schema, 15) },
             },
           };
         });
       },
       pasteRows: (code, schema, startIndex, text) => {
+        get().ensureForm(schema);
+        const lines = text
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .split("\n")
+          .filter((l) => l.trim().length > 0);
+        if (!lines.length) return;
         const keys = schema.form.detail.map((f) => f.key);
-        const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-        const parsed = lines
-          .map((line) => line.split("\t"))
-          .filter((cols) => cols.some((c) => c.trim() !== ""));
-        if (!parsed.length) return;
-
         set((s) => {
-          const bundle = s.forms[code] ?? initBundle(schema);
-          const rows = [...bundle.rows];
-          while (rows.length < startIndex + parsed.length) {
-            rows.push(...makeRows(schema, 10));
-          }
-          parsed.forEach((cols, i) => {
-            const idx = startIndex + i;
-            const cur = { ...rows[idx]! };
-            keys.forEach((key, colIdx) => {
-              if (cols[colIdx] === undefined) return;
-              const field = schema.form.detail.find((f) => f.key === key);
-              let val = cols[colIdx]!.trim();
-              if (field) {
-                val = sanitizeFieldInput(field, val);
-                if (field.pad?.onBlur) val = applyFieldBlur(field, val);
+          const form = s.forms[code] ?? initBundle(schema);
+          let rows = [...form.rows];
+          let idx = startIndex;
+          for (const line of lines) {
+            const cols = line.split("\t");
+            while (idx >= rows.length) {
+              rows.push(emptyDetailRow(schema, newRowId()));
+            }
+            const row = { ...rows[idx]! };
+            keys.forEach((k, i) => {
+              if (cols[i] !== undefined) {
+                const field = schema.form.detail.find((f) => f.key === k);
+                row[k] = field
+                  ? sanitizeFieldInput(field, cols[i]!)
+                  : cols[i]!;
               }
-              cur[key] = val;
             });
-            rows[idx] = cur;
-          });
+            rows[idx] = row;
+            idx += 1;
+          }
           return {
-            forms: {
-              ...s.forms,
-              [code]: { ...bundle, rows },
-            },
+            forms: { ...s.forms, [code]: { ...form, rows } },
           };
         });
       },
+      getForm: (code) => get().forms[code],
     }),
     {
-      name: "ach-filing-form-v2",
-      partialize: (s) => ({
-        activeCode: s.activeCode,
-        forms: s.forms,
-      }),
+      name: "ach-filing-forms-v1",
+      partialize: (s) => ({ activeCode: s.activeCode, forms: s.forms }),
     },
   ),
 );

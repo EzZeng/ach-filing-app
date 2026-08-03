@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
-const { pathToFileURL } = require("url");
 
 const isDev = !app.isPackaged;
 let mainWindow = null;
@@ -11,7 +10,6 @@ let localPort = 0;
 
 function getRendererDir() {
   if (isDev) {
-    // 開發時可用 ELECTRON_START_URL 指向 vite；否則用 build 產物
     return path.join(__dirname, "..", "dist-electron", "renderer");
   }
   return path.join(process.resourcesPath, "renderer");
@@ -41,7 +39,6 @@ function startStaticServer(rootDir) {
       try {
         const urlPath = decodeURIComponent((req.url || "/").split("?")[0]);
         let rel = urlPath === "/" ? "/index.html" : urlPath;
-        // prevent path traversal
         rel = path.normalize(rel).replace(/^(\.\.[/\\])+/, "");
         let filePath = path.join(rootDir, rel);
         if (!filePath.startsWith(rootDir)) {
@@ -50,7 +47,6 @@ function startStaticServer(rootDir) {
           return;
         }
         if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-          // SPA fallback
           filePath = path.join(rootDir, "index.html");
         }
         const data = fs.readFileSync(filePath);
@@ -121,11 +117,37 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+function filtersForFilename(filename) {
+  const lower = String(filename || "").toLowerCase();
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+    return [
+      { name: "HTML 報表", extensions: ["html", "htm"] },
+      { name: "所有檔案", extensions: ["*"] },
+    ];
+  }
+  if (lower.endsWith(".js") || lower.endsWith(".mjs")) {
+    return [
+      { name: "JavaScript", extensions: ["js", "mjs"] },
+      { name: "所有檔案", extensions: ["*"] },
+    ];
+  }
+  if (lower.endsWith(".json")) {
+    return [
+      { name: "JSON", extensions: ["json"] },
+      { name: "所有檔案", extensions: ["*"] },
+    ];
+  }
+  return [
+    { name: "ACH 文字檔", extensions: ["txt"] },
+    { name: "所有檔案", extensions: ["*"] },
+  ];
+}
+
 ipcMain.handle("save-text-file", async (_event, { filename, content }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    title: "儲存 ACH 檔案",
+    title: "儲存 ACH 成品",
     defaultPath: filename || "ACH.txt",
-    filters: [{ name: "文字檔", extensions: ["txt"] }],
+    filters: filtersForFilename(filename),
   });
   if (canceled || !filePath) return { ok: false, canceled: true };
   fs.writeFileSync(filePath, content, "utf8");

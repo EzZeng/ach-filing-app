@@ -143,7 +143,7 @@ function App() {
       </main>
 
       <footer className="border-t border-border bg-surface/80 px-4 py-3 text-center text-xs text-muted">
-        格式由 JSON 參數驅動 · 桌面版
+        格式由 JSON 參數驅動 · 純 HTML + JavaScript 靜態版
       </footer>
       <Toaster position="top-center" richColors closeButton />
     </div>

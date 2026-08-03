@@ -1,0 +1,213 @@
+import { useMemo, useState } from "react";
+import { Braces, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useRefStore } from "@/lib/ach/store";
+import { assertRecordLengths } from "@/lib/ach/engine";
+import type { FormatSchema, RecordFieldDef } from "@/lib/ach/schema";
+
+function FieldTable({ title, fields }: { title: string; fields: RecordFieldDef[] }) {
+  const total = fields.reduce((s, f) => s + f.length, 0);
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center justify-between bg-surface-2 px-3 py-2">
+        <h4 className="text-sm font-bold">{title}</h4>
+        <span className="font-mono text-xs text-muted">Σ {total}</span>
+      </div>
+      <div className="max-h-72 overflow-auto">
+        <table className="data-table text-xs">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>欄位 ID</th>
+              <th>來源</th>
+              <th>長度</th>
+              <th>charset</th>
+              <th>pad</th>
+              <th>說明</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map((f, i) => (
+              <tr key={`${f.id}-${i}`}>
+                <td className="text-faint">{i + 1}</td>
+                <td className="font-mono font-semibold">{f.id}</td>
+                <td>
+                  <span className="badge badge-warn">{f.source}</span>
+                  {f.key ? (
+                    <span className="ml-1 font-mono text-muted">.{f.key}</span>
+                  ) : null}
+                  {f.fn ? (
+                    <span className="ml-1 font-mono text-muted">(){f.fn}</span>
+                  ) : null}
+                </td>
+                <td className="font-mono">{f.length}</td>
+                <td className="font-mono">{f.charset || "—"}</td>
+                <td className="font-mono">
+                  {f.pad?.side ?? (f.source === "filler" ? "fill" : "—")}
+                  {f.pad?.char ? `(${JSON.stringify(f.pad.char)})` : ""}
+                </td>
+                <td className="text-muted">
+                  {f.source === "literal"
+                    ? `固定「${f.value}」`
+                    : f.source === "filler"
+                      ? `填 ${JSON.stringify(f.fill ?? " ")}`
+                      : f.transform
+                        ? `transform:${f.transform}`
+                        : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function FormFieldTable({ schema }: { schema: FormatSchema }) {
+  const all = [
+    ...schema.form.header.map((f) => ({ ...f, section: "表頭" })),
+    ...schema.form.detail.map((f) => ({ ...f, section: "明細" })),
+  ];
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className="bg-surface-2 px-3 py-2">
+        <h4 className="text-sm font-bold">表單欄位（輸入檢核）</h4>
+      </div>
+      <div className="max-h-80 overflow-auto">
+        <table className="data-table text-xs">
+          <thead>
+            <tr>
+              <th>區段</th>
+              <th>key</th>
+              <th>標籤</th>
+              <th>長度</th>
+              <th>charset</th>
+              <th>檢核規則</th>
+            </tr>
+          </thead>
+          <tbody>
+            {all.map((f) => (
+              <tr key={`${f.section}-${f.key}`}>
+                <td>{f.section}</td>
+                <td className="font-mono font-semibold">{f.key}</td>
+                <td>{f.label}</td>
+                <td className="font-mono">{f.length}</td>
+                <td className="font-mono">{f.charset}</td>
+                <td className="font-mono text-muted">
+                  {(f.validation?.rules ?? []).map((r) => r.type).join(", ") || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function SchemaPanel() {
+  const { formats, formatList } = useRefStore();
+  const list = formatList();
+  const [code, setCode] = useState(list[0]?.code ?? "ACHP01");
+  const schema = formats[code];
+
+  const lengthCheck = useMemo(
+    () => (schema ? assertRecordLengths(schema) : []),
+    [schema],
+  );
+
+  if (!schema) {
+    return (
+      <div className="card p-8 text-center text-muted">尚無格式定義</div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Braces className="size-5 text-primary" />
+            <div>
+              <h2 className="text-lg font-bold">格式參數（JSON）</h2>
+              <p className="text-sm text-muted">
+                檔案代號、欄位、長度、英數字檢核皆由{" "}
+                <code className="font-mono text-xs">public/data/formats/*.json</code>{" "}
+                定義
+              </p>
+            </div>
+          </div>
+          <select
+            className="field-input w-auto min-w-48"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          >
+            {list.map((f) => (
+              <option key={f.code} value={f.code}>
+                {f.code} — {f.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mb-4 grid gap-2 sm:grid-cols-4">
+          <div className="rounded-lg bg-surface-2 px-3 py-2">
+            <div className="text-xs text-muted">檔案代號</div>
+            <div className="font-mono font-bold">{schema.code}</div>
+          </div>
+          <div className="rounded-lg bg-surface-2 px-3 py-2">
+            <div className="text-xs text-muted">簡稱</div>
+            <div className="font-bold">{schema.shortCode}</div>
+          </div>
+          <div className="rounded-lg bg-surface-2 px-3 py-2">
+            <div className="text-xs text-muted">版次 / 列長</div>
+            <div className="font-mono font-bold">
+              {schema.version} / {schema.recordLength}
+            </div>
+          </div>
+          <div className="rounded-lg bg-surface-2 px-3 py-2">
+            <div className="text-xs text-muted">長度檢核</div>
+            {lengthCheck.length === 0 ? (
+              <div className="flex items-center gap-1 font-semibold text-ok">
+                <CheckCircle2 className="size-4" /> 首／明／尾一致
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 font-semibold text-danger">
+                <AlertTriangle className="size-4" /> 不一致
+              </div>
+            )}
+          </div>
+        </div>
+
+        {lengthCheck.length > 0 && (
+          <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+            {lengthCheck.map((e) => (
+              <div key={e}>{e}</div>
+            ))}
+          </div>
+        )}
+
+        <p className="mb-3 text-sm text-muted">
+          新增檔案代號：在{" "}
+          <code className="font-mono text-xs">formats/index.json</code> 登錄，並新增對應{" "}
+          <code className="font-mono text-xs">{`{code}.json`}</code> 即可，無需改程式碼。
+        </p>
+      </div>
+
+      <FormFieldTable schema={schema} />
+
+      <div className="grid gap-4 lg:grid-cols-1">
+        <FieldTable title="首錄 header" fields={schema.records.header.fields} />
+        <FieldTable title="明細 detail" fields={schema.records.detail.fields} />
+        <FieldTable title="尾錄 trailer" fields={schema.records.trailer.fields} />
+      </div>
+
+      <div className="card p-4">
+        <h3 className="mb-2 font-bold">JSON 原始定義（唯讀預覽）</h3>
+        <pre className="max-h-96 overflow-auto rounded-lg bg-header p-3 font-mono text-[11px] leading-relaxed text-header-fg">
+          {JSON.stringify(schema, null, 2)}
+        </pre>
+      </div>
+    </div>
+  );
+}

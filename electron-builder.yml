@@ -1,0 +1,35 @@
+appId: tw.twnch.ach-filing
+productName: 代收建檔小程式
+copyright: Copyright © 2026
+directories:
+  output: release
+  buildResources: electron/build
+files:
+  - electron/main.cjs
+  - electron/preload.cjs
+  - package.json
+extraResources:
+  - from: dist-electron/renderer
+    to: renderer
+asar: true
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  artifactName: "${productName}-${version}-win-${arch}.${ext}"
+portable:
+  artifactName: "${productName}-${version}-portable.exe"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  target:
+    - AppImage
+    - zip
+mac:
+  target:
+    - zip

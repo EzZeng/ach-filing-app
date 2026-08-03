@@ -1,5 +1,5 @@
 appId: tw.twnch.ach-filing
-productName: 代收建檔小程式
+productName: ACH-Filing
 copyright: Copyright © 2026
 directories:
   output: release
@@ -20,12 +20,9 @@ win:
     - target: zip
       arch:
         - x64
-  artifactName: "${productName}-${version}-win-${arch}.${ext}"
+  artifactName: "ACH-Filing-${version}-win-${arch}.${ext}"
 portable:
-  artifactName: "${productName}-${version}-portable.exe"
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  artifactName: "ACH-Filing-${version}-portable.exe"
 linux:
   target:
     - AppImage

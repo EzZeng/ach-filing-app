@@ -3,6 +3,15 @@
 財金 ACH **P01 代收交易** / **P02 授權建檔** 固定長度文字檔產生工具。  
 由 Excel 巨集改寫，**檔案代號與欄位格式以 JSON 參數化**。
 
+## 下載 Windows 桌面版
+
+Release：**[v1.0.0](https://github.com/EzZeng/ach-filing-app/releases/tag/v1.0.0)**
+
+| 檔案 | 說明 |
+|------|------|
+| [ACH-Filing-1.0.0-portable.exe](https://github.com/EzZeng/ach-filing-app/releases/download/v1.0.0/ACH-Filing-1.0.0-portable.exe) | 免安裝可執行檔 |
+| [ACH-Filing-1.0.0-win-x64.zip](https://github.com/EzZeng/ach-filing-app/releases/download/v1.0.0/ACH-Filing-1.0.0-win-x64.zip) | Portable 壓縮包 |
+
 ## 功能
 
 - ACHP01 / ACHP02（可擴充更多檔案代號）
@@ -27,7 +36,7 @@ npm install
 npm run dev
 ```
 
-## 桌面版打包（Windows portable exe + zip）
+## 桌面版打包
 
 ```bash
 npm install
@@ -36,8 +45,8 @@ npm run electron:pack
 
 產物位於 `release/`：
 
-- `代收建檔小程式-1.0.0-portable.exe` — 免安裝可執行檔
-- `代收建檔小程式-1.0.0-win-x64.zip` — portable 壓縮包
+- `ACH-Filing-1.0.0-portable.exe`
+- `ACH-Filing-1.0.0-win-x64.zip`
 
 ## 授權
 

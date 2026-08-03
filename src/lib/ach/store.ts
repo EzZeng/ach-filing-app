@@ -11,13 +11,12 @@ import type {
 } from "./schema";
 import { applyFieldBlur, emptyDetailRow, emptyHeader, sanitizeFieldInput } from "./engine";
 import { newRowId, todayRoc } from "./utils";
-
-/** 靜態 HTML/JS 部署時用相對路徑（配合 vite base: './'） */
-function dataUrl(path: string): string {
-  const base = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
-  const clean = path.replace(/^\//, "");
-  return `${base}${clean}`;
-}
+import {
+  EMBEDDED_BRANCHES,
+  EMBEDDED_FORMAT_INDEX,
+  EMBEDDED_TXIDS,
+  loadEmbeddedFormats,
+} from "@/data/embedded";
 
 type RefState = {
   txids: Txid[];
@@ -82,24 +81,22 @@ export const useRefStore = create<RefState>((set, get) => ({
     if (get().loaded || get().loading) return;
     set({ loading: true, loadError: null });
     try {
-      const [tRes, bRes, iRes] = await Promise.all([
-        fetch(dataUrl("data/txid.json")),
-        fetch(dataUrl("data/branch.json")),
-        fetch(dataUrl("data/formats/index.json")),
-      ]);
-      if (!tRes.ok || !bRes.ok || !iRes.ok) throw new Error("無法載入代碼／格式定義");
-      const txids = (await tRes.json()) as Txid[];
-      const branches = (await bRes.json()) as Branch[];
-      const formatIndex = (await iRes.json()) as FormatIndex;
+      // 客戶版：資料已打包進 JS，不依賴外部 JSON / 網路
+      const txids = EMBEDDED_TXIDS;
+      const branches = EMBEDDED_BRANCHES;
+      const formatIndex = EMBEDDED_FORMAT_INDEX;
+      const formats = loadEmbeddedFormats();
 
-      const formats: Record<string, FormatSchema> = {};
-      await Promise.all(
-        formatIndex.formats.map(async (entry) => {
-          const res = await fetch(dataUrl(`data/formats/${entry.schemaFile}`));
-          if (!res.ok) throw new Error(`無法載入格式 ${entry.code}`);
-          formats[entry.code] = (await res.json()) as FormatSchema;
-        }),
-      );
+      if (!formatIndex.formats.length || !Object.keys(formats).length) {
+        throw new Error("內嵌格式定義為空");
+      }
+
+      // 檢查 index 內每個代號都有 schema
+      for (const entry of formatIndex.formats) {
+        if (!formats[entry.code]) {
+          throw new Error(`缺少內嵌格式：${entry.code}（請在 src/data/embedded.ts 登記）`);
+        }
+      }
 
       set({ txids, branches, formatIndex, formats, loaded: true, loading: false });
     } catch (e) {

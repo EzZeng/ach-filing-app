@@ -22,9 +22,10 @@
     "electron:pack": "npm run electron:renderer && electron-builder --win portable zip --x64 --publish never",
     "electron:pack:dir": "npm run electron:renderer && electron-builder --win dir --x64 --publish never",
     "build:web": "vite build --config vite.static.config.ts",
-    "pack:web": "node scripts/pack-static.mjs",
+    "pack:web": "node scripts/build-customer.mjs",
     "preview:web": "vite preview --config vite.static.config.ts",
-    "dev:web": "vite --config vite.static.config.ts"
+    "dev:web": "vite --config vite.static.config.ts",
+    "build:customer": "node scripts/build-customer.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.3",
@@ -104,7 +105,7 @@
   },
   "description": "代收建檔小程式 — ACH 固定長度檔產生（JSON 參數化）純 HTML + JS 靜態版",
   "main": "electron/main.cjs",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "EzZeng",
   "license": "MIT",
   "homepage": "https://github.com/EzZeng/ach-filing-app",

@@ -52,7 +52,11 @@ import {
 import { normalizeSubmitDate } from "@/lib/ach/utils";
 import { saveAchFile, saveAchFiles } from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
-import { ImportPreviewDialog } from "./ImportPreviewDialog";
+import {
+  ControlHeaderPreview,
+  ControlTrailerPreview,
+  ImportPreviewDialog,
+} from "./ImportPreviewDialog";
 
 type Props = {
   schema: FormatSchema;
@@ -232,7 +236,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   function validateBeforeGenerate(): boolean {
     if (headerHasError(headerErrs)) {
-      toast.error("表頭資料輸入有誤");
+      toast.error("提出／發動者資料輸入有誤");
       return false;
     }
     const bad: number[] = [];
@@ -513,70 +517,111 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {schema.form.header.map((field) => {
-            const err = headerErrs[field.key];
-            const meta = fieldMeta(field);
-            return (
-              <div key={field.key}>
-                <label
-                  className="field-label"
-                  htmlFor={`${schema.code}-${field.key}`}
-                >
-                  {field.label}
-                </label>
-                {field.inputType === "select" ? (
-                  <select
-                    id={`${schema.code}-${field.key}`}
-                    className={`field-input ${err ? "err" : "warn"}`}
-                    value={header[field.key] ?? ""}
-                    onChange={(e) =>
-                      setHeader(schema.code, schema, field.key, e.target.value)
-                    }
-                  >
-                    {selectOptions(field).map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="flex gap-1">
-                    <input
-                      id={`${schema.code}-${field.key}`}
-                      className={`field-input ${field.ui?.mono ? "font-mono" : ""} ${err ? "err" : "warn"}`}
-                      value={header[field.key] ?? ""}
-                      maxLength={field.length || undefined}
-                      placeholder={field.placeholder}
-                      onChange={(e) =>
-                        setHeader(schema.code, schema, field.key, e.target.value)
-                      }
-                      onBlur={() => onHeaderBlur(field)}
-                    />
-                    {field.picker && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary px-2"
-                        onClick={() =>
-                          setPicker({
-                            mode: field.picker!,
-                            target: "header",
-                            key: field.key,
-                          })
+        <div className="mb-4 space-y-4">
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">控制首錄（HEADER）</h3>
+            <p className="mb-2 text-xs text-muted">
+              對照財金固定長度首錄：首錄別、資料代號、處理日期、處理時間、發送／接收單位代號、版次。交易代號／帳號／統編不在此列。
+            </p>
+            <ControlHeaderPreview
+              schema={schema}
+              header={header}
+              branches={branches}
+            />
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">
+              提出／發動者資料（寫入明細共用）
+            </h3>
+            <p className="mb-2 text-xs text-muted">
+              供編輯與檢核；產生檔時寫入明細錄（並衍生首錄發送單位代號）。
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              {schema.form.header.map((field) => {
+                const err = headerErrs[field.key];
+                const meta = fieldMeta(field);
+                return (
+                  <div key={field.key}>
+                    <label
+                      className="field-label"
+                      htmlFor={`${schema.code}-${field.key}`}
+                    >
+                      {field.label}
+                    </label>
+                    {field.inputType === "select" ? (
+                      <select
+                        id={`${schema.code}-${field.key}`}
+                        className={`field-input ${err ? "err" : "warn"}`}
+                        value={header[field.key] ?? ""}
+                        onChange={(e) =>
+                          setHeader(schema.code, schema, field.key, e.target.value)
                         }
-                        aria-label={`搜尋${field.label}`}
                       >
-                        <Search className="size-4" />
-                      </button>
+                        {selectOptions(field).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex gap-1">
+                        <input
+                          id={`${schema.code}-${field.key}`}
+                          className={`field-input ${field.ui?.mono ? "font-mono" : ""} ${err ? "err" : "warn"}`}
+                          value={header[field.key] ?? ""}
+                          maxLength={field.length || undefined}
+                          placeholder={field.placeholder}
+                          onChange={(e) =>
+                            setHeader(
+                              schema.code,
+                              schema,
+                              field.key,
+                              e.target.value,
+                            )
+                          }
+                          onBlur={() => onHeaderBlur(field)}
+                        />
+                        {field.picker && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary px-2"
+                            onClick={() =>
+                              setPicker({
+                                mode: field.picker!,
+                                target: "header",
+                                key: field.key,
+                              })
+                            }
+                            aria-label={`搜尋${field.label}`}
+                          >
+                            <Search className="size-4" />
+                          </button>
+                        )}
+                      </div>
                     )}
+                    <div className={err ? "field-hint" : "field-meta"}>
+                      {err || meta || "\u00a0"}
+                    </div>
                   </div>
-                )}
-                <div className={err ? "field-hint" : "field-meta"}>
-                  {err || meta || "\u00a0"}
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">控制尾錄（FOOTER）</h3>
+            <p className="mb-2 text-xs text-muted">
+              對照財金固定長度尾錄（總筆數、總金額等，產生時自動計算）。
+            </p>
+            <ControlTrailerPreview
+              schema={schema}
+              header={header}
+              totalCount={stats.count}
+              totalAmount={stats.amount}
+              branches={branches}
+            />
+          </div>
         </div>
 
         {/* 成品輸出／加工 */}

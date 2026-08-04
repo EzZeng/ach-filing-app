@@ -6,9 +6,19 @@ import {
   ListTree,
   X,
 } from "lucide-react";
-import type { Branch, FormatSchema, Txid } from "@/lib/ach/schema";
-import type { ImportResult } from "@/lib/ach/import";
-import { lookupBranch, lookupTxid } from "@/lib/ach/engine";
+import type {
+  Branch,
+  FormatSchema,
+  RecordFieldDef,
+  Txid,
+} from "@/lib/ach/schema";
+import type { ImportResult, ParsedLine } from "@/lib/ach/import";
+import {
+  formatTxTypeLabel,
+  lookupBranch,
+  lookupTxid,
+  resolveSorg,
+} from "@/lib/ach/engine";
 
 type Props = {
   open: boolean;
@@ -19,7 +29,14 @@ type Props = {
   onApply: (result: ImportResult) => void;
 };
 
-type PreviewTab = "form" | "fields" | "raw";
+type PreviewTab = "fields" | "form" | "raw";
+
+const KIND_LABEL: Record<ParsedLine["kind"], string> = {
+  header: "控制首錄（HEADER）",
+  detail: "明細錄",
+  trailer: "控制尾錄（FOOTER）",
+  unknown: "未知",
+};
 
 export function ImportPreviewDialog({
   open,
@@ -29,19 +46,20 @@ export function ImportPreviewDialog({
   onClose,
   onApply,
 }: Props) {
-  const [tab, setTab] = useState<PreviewTab>("form");
+  /** 預設以固定長度欄位（控制首／尾錄）為準 */
+  const [tab, setTab] = useState<PreviewTab>("fields");
 
   const schema = result?.schema;
   const canApply = !!result && result.errors.length === 0;
 
-  const headerNotes = useMemo(() => {
+  const formNotes = useMemo(() => {
     if (!result || !schema) return {};
     const notes: Record<string, string> = {};
     for (const f of schema.form.header) {
       const v = result.header[f.key] ?? "";
       if (f.metaFrom === "txid") {
         const t = lookupTxid(v, txids);
-        notes[f.key] = t ? `${t.type} · ${t.name}` : "";
+        notes[f.key] = t ? `${formatTxTypeLabel(t.type)} · ${t.name}` : "";
       } else if (f.metaFrom === "branch") {
         notes[f.key] = lookupBranch(v, branches)?.name ?? "";
       } else if (f.optionsFrom === "authOptions") {
@@ -83,9 +101,7 @@ export function ImportPreviewDialog({
             <p className="truncate text-xs text-muted" title={result.filename}>
               {result.filename || "未命名檔案"} · {schema.shortCode}{" "}
               {schema.name}
-              {result.detectedCode
-                ? ` · 偵測 ${result.detectedCode}`
-                : ""}
+              {result.detectedCode ? ` · 偵測 ${result.detectedCode}` : ""}
             </p>
           </div>
           <button
@@ -129,8 +145,8 @@ export function ImportPreviewDialog({
         <div className="flex flex-wrap gap-1 border-b border-border px-4 pt-2">
           {(
             [
-              ["form", "表單欄位"],
               ["fields", "固定長度欄位"],
+              ["form", "表單欄位"],
               ["raw", "原始列"],
             ] as const
           ).map(([id, label]) => (
@@ -150,21 +166,21 @@ export function ImportPreviewDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          {tab === "fields" && <FieldsPreview result={result} schema={schema} />}
           {tab === "form" && (
             <FormPreview
               schema={schema}
               result={result}
-              headerNotes={headerNotes}
+              formNotes={formNotes}
               branches={branches}
             />
           )}
-          {tab === "fields" && <FieldsPreview result={result} />}
           {tab === "raw" && <RawPreview result={result} schema={schema} />}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
           <p className="text-xs text-muted">
-            套用後會覆寫「{schema.code}」目前的表頭與明細
+            套用後會覆寫「{schema.code}」目前的提出資料與明細
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -186,21 +202,149 @@ export function ImportPreviewDialog({
   );
 }
 
+function RecordFieldsTable({
+  title,
+  line,
+  defs,
+}: {
+  title: string;
+  line?: ParsedLine;
+  defs: RecordFieldDef[];
+}) {
+  if (!line) {
+    return (
+      <section>
+        <h4 className="mb-2 text-sm font-bold">{title}</h4>
+        <p className="text-sm text-muted">無此列</p>
+      </section>
+    );
+  }
+
+  const byId = new Map(defs.map((d) => [d.id, d]));
+
+  return (
+    <section>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <ListTree className="size-4 text-primary" />
+        <h4 className="text-sm font-bold">{title}</h4>
+        <span className={`badge ${line.lengthOk ? "badge-ok" : "badge-err"}`}>
+          長度 {line.length}
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>欄位</th>
+              <th>ID</th>
+              <th>長度</th>
+              <th>原始</th>
+              <th>解析值</th>
+            </tr>
+          </thead>
+          <tbody>
+            {line.fields
+              .filter((f) => f.id !== "FILLER")
+              .map((f) => {
+                const def = byId.get(f.id);
+                return (
+                  <tr key={`${line.index}-${f.id}-${f.key ?? ""}`}>
+                    <td className="whitespace-nowrap">
+                      {def?.label || f.id}
+                    </td>
+                    <td className="font-mono text-xs">{f.id}</td>
+                    <td className="text-center">{f.length}</td>
+                    <td
+                      className="max-w-48 truncate font-mono text-xs"
+                      title={f.raw}
+                    >
+                      {f.raw.replace(/ /g, "·") || "—"}
+                    </td>
+                    <td className="font-mono text-xs">{f.value || "—"}</td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function FieldsPreview({
+  result,
+  schema,
+}: {
+  result: ImportResult;
+  schema: FormatSchema;
+}) {
+  const headerLine = result.lines.find((l) => l.kind === "header");
+  const trailerLine = result.lines.find((l) => l.kind === "trailer");
+  const detailLines = result.lines.filter((l) => l.kind === "detail");
+  const detailSamples = detailLines.slice(0, 2);
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-muted">
+        依財金固定長度規格切片。表頭＝控制首錄、表尾＝控制尾錄（不含「交易代號／帳號」等明細共用欄）。
+      </p>
+
+      <RecordFieldsTable
+        title={KIND_LABEL.header}
+        line={headerLine}
+        defs={schema.records.header.fields}
+      />
+
+      {detailSamples.map((line, i) => (
+        <RecordFieldsTable
+          key={line.index}
+          title={`${KIND_LABEL.detail}（第 ${i + 1} 筆／共 ${detailLines.length}）`}
+          line={line}
+          defs={schema.records.detail.fields}
+        />
+      ))}
+      {detailLines.length > detailSamples.length && (
+        <p className="text-xs text-muted">
+          另有 {detailLines.length - detailSamples.length} 筆明細未全部列出（見「原始列」）
+        </p>
+      )}
+
+      <RecordFieldsTable
+        title={KIND_LABEL.trailer}
+        line={trailerLine}
+        defs={schema.records.trailer.fields}
+      />
+    </div>
+  );
+}
+
 function FormPreview({
   schema,
   result,
-  headerNotes,
+  formNotes,
   branches,
 }: {
   schema: FormatSchema;
   result: ImportResult;
-  headerNotes: Record<string, string>;
+  formNotes: Record<string, string>;
   branches: Branch[];
 }) {
+  const headerLine = result.lines.find((l) => l.kind === "header");
+  const trailerLine = result.lines.find((l) => l.kind === "trailer");
+
   return (
     <div className="space-y-4">
+      <RecordFieldsTable
+        title="控制首錄（HEADER）"
+        line={headerLine}
+        defs={schema.records.header.fields}
+      />
+
       <section>
-        <h4 className="mb-2 text-sm font-bold">表頭</h4>
+        <h4 className="mb-1 text-sm font-bold">提出／發動者資料（寫入明細共用）</h4>
+        <p className="mb-2 text-xs text-muted">
+          這些不是控制首錄欄位；匯入時由首錄衍生欄與明細列還原，供表單編輯。
+        </p>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="data-table">
             <thead>
@@ -215,7 +359,7 @@ function FormPreview({
                 <tr key={f.key}>
                   <td className="whitespace-nowrap">{f.label}</td>
                   <td className="font-mono">{result.header[f.key] || "—"}</td>
-                  <td className="text-muted">{headerNotes[f.key] || ""}</td>
+                  <td className="text-muted">{formNotes[f.key] || ""}</td>
                 </tr>
               ))}
             </tbody>
@@ -272,77 +416,11 @@ function FormPreview({
         </div>
       </section>
 
-      {Object.keys(result.trailer).length > 0 && (
-        <section>
-          <h4 className="mb-2 text-sm font-bold">尾筆摘要</h4>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(result.trailer)
-              .filter(([k, v]) => v && k !== "FILLER" && k !== "EOF")
-              .map(([k, v]) => (
-                <span key={k} className="stat-pill font-mono text-xs">
-                  {k}={v}
-                </span>
-              ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function FieldsPreview({ result }: { result: ImportResult }) {
-  const samples = result.lines.filter((l) => l.kind !== "unknown").slice(0, 3);
-  if (!samples.length) {
-    return <p className="text-sm text-muted">無可解析的固定長度欄位</p>;
-  }
-  return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted">
-        依 JSON records 定義切片（顯示前 {samples.length} 列）
-      </p>
-      {samples.map((line) => (
-        <section key={line.index}>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <ListTree className="size-4 text-primary" />
-            <h4 className="text-sm font-bold">
-              第 {line.index + 1} 列 · {line.kind}
-            </h4>
-            <span
-              className={`badge ${line.lengthOk ? "badge-ok" : "badge-err"}`}
-            >
-              長度 {line.length}
-            </span>
-          </div>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>source</th>
-                  <th>key</th>
-                  <th>長度</th>
-                  <th>原始</th>
-                  <th>解析值</th>
-                </tr>
-              </thead>
-              <tbody>
-                {line.fields.map((f) => (
-                  <tr key={`${line.index}-${f.id}-${f.key ?? ""}`}>
-                    <td className="font-mono text-xs">{f.id}</td>
-                    <td className="text-xs text-muted">{f.source}</td>
-                    <td className="font-mono text-xs">{f.key || "—"}</td>
-                    <td className="text-center">{f.length}</td>
-                    <td className="max-w-48 truncate font-mono text-xs" title={f.raw}>
-                      {f.raw.replace(/ /g, "·") || "—"}
-                    </td>
-                    <td className="font-mono text-xs">{f.value || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+      <RecordFieldsTable
+        title="控制尾錄（FOOTER）"
+        line={trailerLine}
+        defs={schema.records.trailer.fields}
+      />
     </div>
   );
 }
@@ -360,7 +438,7 @@ function RawPreview({
         <thead>
           <tr>
             <th className="w-12">#</th>
-            <th className="w-20">類型</th>
+            <th className="w-40">類型</th>
             <th>內容</th>
             <th className="w-20">長度</th>
           </tr>
@@ -369,7 +447,7 @@ function RawPreview({
           {result.lines.map((line) => (
             <tr key={line.index} className={line.lengthOk ? undefined : "has-error"}>
               <td className="text-center text-faint">{line.index + 1}</td>
-              <td className="text-xs">{line.kind}</td>
+              <td className="text-xs">{KIND_LABEL[line.kind]}</td>
               <td className="max-w-xl truncate font-mono text-[11px]" title={line.raw}>
                 {line.raw}
               </td>
@@ -383,6 +461,110 @@ function RawPreview({
               </td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 編輯畫面用：依目前提出資料預覽控制首錄欄位（對齊固定長度 HEADER） */
+export function ControlHeaderPreview({
+  schema,
+  header,
+  branches,
+}: {
+  schema: FormatSchema;
+  header: Record<string, string>;
+  branches: Branch[];
+}) {
+  const values: Record<string, string> = {
+    BOF: "BOF",
+    CDATA: schema.code,
+    TDATE: header.date ?? "",
+    TTIME: "（產生時）",
+    SORG: resolveSorg(header.bankCode ?? "", branches),
+    RORG:
+      schema.records.header.fields.find((f) => f.id === "RORG")?.value ??
+      "9990250",
+    VERNO: schema.version,
+  };
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="data-table text-xs">
+        <thead>
+          <tr>
+            <th>欄位</th>
+            <th>ID</th>
+            <th>長度</th>
+            <th>值</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schema.records.header.fields
+            .filter((f) => f.id !== "FILLER")
+            .map((f) => (
+              <tr key={f.id}>
+                <td className="whitespace-nowrap">{f.label || f.id}</td>
+                <td className="font-mono">{f.id}</td>
+                <td className="text-center">{f.length}</td>
+                <td className="font-mono">{values[f.id] || "—"}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function ControlTrailerPreview({
+  schema,
+  header,
+  totalCount,
+  totalAmount,
+  branches,
+}: {
+  schema: FormatSchema;
+  header: Record<string, string>;
+  totalCount: number;
+  totalAmount: number;
+  branches: Branch[];
+}) {
+  const values: Record<string, string> = {
+    EOF: "EOF",
+    CDATA: schema.code,
+    TDATE: header.date ?? "",
+    SORG: resolveSorg(header.bankCode ?? "", branches),
+    RORG:
+      schema.records.trailer.fields.find((f) => f.id === "RORG")?.value ??
+      "9990250",
+    TCOUNT: String(totalCount),
+    TAMT: String(Math.floor(totalAmount)),
+    YDATE: "（空白）",
+  };
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="data-table text-xs">
+        <thead>
+          <tr>
+            <th>欄位</th>
+            <th>ID</th>
+            <th>長度</th>
+            <th>值</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schema.records.trailer.fields
+            .filter((f) => f.id !== "FILLER")
+            .map((f) => (
+              <tr key={f.id}>
+                <td className="whitespace-nowrap">{f.label || f.id}</td>
+                <td className="font-mono">{f.id}</td>
+                <td className="text-center">{f.length}</td>
+                <td className="font-mono">{values[f.id] ?? "—"}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

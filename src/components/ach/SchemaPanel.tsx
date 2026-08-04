@@ -68,7 +68,7 @@ function FieldTable({ title, fields }: { title: string; fields: RecordFieldDef[]
 
 function FormFieldTable({ schema }: { schema: FormatSchema }) {
   const all = [
-    ...schema.form.header.map((f) => ({ ...f, section: "表頭" })),
+    ...schema.form.header.map((f) => ({ ...f, section: "提出資料" })),
     ...schema.form.detail.map((f) => ({ ...f, section: "明細" })),
   ];
   return (

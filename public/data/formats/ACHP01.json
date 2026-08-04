@@ -22,7 +22,7 @@
     "header": [
       {
         "key": "date",
-        "label": "檔案提出日期（民國）",
+        "label": "處理日期（民國）",
         "placeholder": "01151231",
         "inputType": "rocDate",
         "length": 8,

@@ -37,11 +37,23 @@ type FormBundle = {
   rows: DetailRow[];
 };
 
+/** 工作區：預設關閉，引導先上傳既有 P01／P02 檔 */
+export type WorkspaceMeta = {
+  open: boolean;
+  source: "import" | "manual" | null;
+  fileName?: string;
+};
+
 type FormState = {
   activeCode: string;
   forms: Record<string, FormBundle>;
+  workspaces: Record<string, WorkspaceMeta>;
   setActiveCode: (code: string) => void;
   ensureForm: (schema: FormatSchema) => void;
+  isWorkspaceOpen: (code: string) => boolean;
+  getWorkspace: (code: string) => WorkspaceMeta;
+  openManualWorkspace: (schema: FormatSchema) => void;
+  closeWorkspace: (schema: FormatSchema) => void;
   setHeader: (code: string, schema: FormatSchema, key: string, value: string) => void;
   blurHeader: (code: string, schema: FormatSchema, key: string) => void;
   updateRow: (
@@ -60,8 +72,14 @@ type FormState = {
   loadFromImport: (
     schema: FormatSchema,
     data: { header: HeaderValues; rows: DetailRow[] },
+    meta?: { fileName?: string },
   ) => void;
   getForm: (code: string) => FormBundle | undefined;
+};
+
+const CLOSED_WORKSPACE: WorkspaceMeta = {
+  open: false,
+  source: null,
 };
 
 function makeRows(schema: FormatSchema, n: number): DetailRow[] {
@@ -124,12 +142,36 @@ export const useFormStore = create<FormState>()(
     (set, get) => ({
       activeCode: "ACHP01",
       forms: {},
+      workspaces: {},
       setActiveCode: (code) => set({ activeCode: code }),
       ensureForm: (schema) => {
         const existing = get().forms[schema.code];
         if (existing) return;
         set((s) => ({
           forms: { ...s.forms, [schema.code]: initBundle(schema) },
+        }));
+      },
+      isWorkspaceOpen: (code) => !!get().workspaces[code]?.open,
+      getWorkspace: (code) => get().workspaces[code] ?? CLOSED_WORKSPACE,
+      openManualWorkspace: (schema) => {
+        get().ensureForm(schema);
+        set((s) => ({
+          workspaces: {
+            ...s.workspaces,
+            [schema.code]: { open: true, source: "manual" },
+          },
+        }));
+      },
+      closeWorkspace: (schema) => {
+        set((s) => ({
+          forms: {
+            ...s.forms,
+            [schema.code]: initBundle(schema),
+          },
+          workspaces: {
+            ...s.workspaces,
+            [schema.code]: CLOSED_WORKSPACE,
+          },
         }));
       },
       setHeader: (code, schema, key, value) => {
@@ -286,7 +328,7 @@ export const useFormStore = create<FormState>()(
           };
         });
       },
-      loadFromImport: (schema, data) => {
+      loadFromImport: (schema, data, meta) => {
         const header = emptyHeader(schema);
         for (const f of schema.form.header) {
           const raw = data.header[f.key] ?? header[f.key] ?? "";
@@ -310,13 +352,25 @@ export const useFormStore = create<FormState>()(
             ...s.forms,
             [schema.code]: { header, rows },
           },
+          workspaces: {
+            ...s.workspaces,
+            [schema.code]: {
+              open: true,
+              source: "import",
+              fileName: meta?.fileName,
+            },
+          },
         }));
       },
       getForm: (code) => get().forms[code],
     }),
     {
-      name: "ach-filing-forms-v1",
-      partialize: (s) => ({ activeCode: s.activeCode, forms: s.forms }),
+      name: "ach-filing-forms-v2",
+      partialize: (s) => ({
+        activeCode: s.activeCode,
+        forms: s.forms,
+        workspaces: s.workspaces,
+      }),
     },
   ),
 );

@@ -484,7 +484,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
               ref={fileInputRef}
               type="file"
               accept=".txt,text/plain"
-              className="hidden"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = "";

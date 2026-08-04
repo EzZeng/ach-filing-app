@@ -12,7 +12,10 @@ export function HelpPanel() {
           <h2 className="text-lg font-bold">關於本程式</h2>
         </div>
         <p className="text-sm leading-relaxed text-muted">
-          由財金「代收建檔小程式」Excel 巨集改寫。
+          由財金「代收建檔小程式」Excel 巨集改寫；控制首錄／尾錄欄位對照官方規格。
+          ACHP01 明細<strong className="text-fg">交易類別</strong>依交易代號帶入：
+          <strong className="text-fg">SD＝代收</strong>、
+          <strong className="text-fg">SC＝代付</strong>。
           <strong className="text-fg">檔案代號</strong>（如 ACHP01、ACHP02）與
           <strong className="text-fg">欄位／長度／英數字檢核</strong>
           皆以 JSON 參數化，新增格式不必改程式邏輯。

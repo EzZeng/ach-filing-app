@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
 import type { FormatSchema, FormFieldDef } from "@/lib/ach/schema";
 import {
+  formatTxTypeLabel,
   generateFromSchema,
   headerHasError,
   isRowEmpty,
@@ -124,8 +125,8 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   );
 
   const rowErrs = useMemo(
-    () => rows.map((r) => validateDetailRow(schema, r, txids, branches)),
-    [schema, rows, txids, branches],
+    () => rows.map((r) => validateDetailRow(schema, r, txids, branches, header)),
+    [schema, rows, txids, branches, header],
   );
 
   const stats = useMemo(() => {
@@ -183,7 +184,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     const v = header[field.key] ?? "";
     if (field.metaFrom === "txid") {
       const t = lookupTxid(v, txids);
-      return t ? `${t.type} · ${t.name}` : "";
+      return t ? `${formatTxTypeLabel(t.type)} · ${t.name}` : "";
     }
     if (field.metaFrom === "branch") {
       return lookupBranch(v, branches)?.name ?? "";

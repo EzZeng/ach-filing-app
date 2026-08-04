@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { useRefStore } from "@/lib/ach/store";
+import { formatTxTypeLabel } from "@/lib/ach/engine";
 import { toast } from "sonner";
 
 export function RefsPanel() {
@@ -22,12 +23,17 @@ export function RefsPanel() {
     }
     if (tab === "txid") {
       if (!query) return txids;
-      return txids.filter(
-        (t) =>
+      return txids.filter((t) => {
+        const typeLabel = formatTxTypeLabel(t.type).toLowerCase();
+        return (
           t.code.includes(query) ||
           t.name.toLowerCase().includes(query) ||
-          t.type.toLowerCase().includes(query),
-      );
+          t.type.toLowerCase().includes(query) ||
+          typeLabel.includes(query) ||
+          (query.includes("代收") && t.type === "SD") ||
+          (query.includes("代付") && t.type === "SC")
+        );
+      });
     }
     if (!query) return branches.slice(0, 200);
     return branches
@@ -126,7 +132,7 @@ export function RefsPanel() {
                 ? (list as typeof txids).map((t) => (
                     <tr key={t.code}>
                       <td className="font-mono font-semibold">{t.code}</td>
-                      <td>{t.type}</td>
+                      <td>{formatTxTypeLabel(t.type)}</td>
                       <td>{t.name}</td>
                     </tr>
                   ))

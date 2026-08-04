@@ -47,13 +47,15 @@ function FieldTable({ title, fields }: { title: string; fields: RecordFieldDef[]
                   {f.pad?.char ? `(${JSON.stringify(f.pad.char)})` : ""}
                 </td>
                 <td className="text-muted">
-                  {f.source === "literal"
-                    ? `固定「${f.value}」`
-                    : f.source === "filler"
-                      ? `填 ${JSON.stringify(f.fill ?? " ")}`
-                      : f.transform
-                        ? `transform:${f.transform}`
-                        : ""}
+                  {f.label
+                    ? f.label
+                    : f.source === "literal"
+                      ? `固定「${f.value}」`
+                      : f.source === "filler"
+                        ? `填 ${JSON.stringify(f.fill ?? " ")}`
+                        : f.transform
+                          ? `transform:${f.transform}`
+                          : ""}
                 </td>
               </tr>
             ))}
@@ -224,9 +226,9 @@ export function SchemaPanel() {
       <FormFieldTable schema={schema} />
 
       <div className="grid gap-4 lg:grid-cols-1">
-        <FieldTable title="首錄 header" fields={schema.records.header.fields} />
-        <FieldTable title="明細 detail" fields={schema.records.detail.fields} />
-        <FieldTable title="尾錄 trailer" fields={schema.records.trailer.fields} />
+        <FieldTable title="控制首錄（header）" fields={schema.records.header.fields} />
+        <FieldTable title="明細錄（detail）" fields={schema.records.detail.fields} />
+        <FieldTable title="控制尾錄（trailer）" fields={schema.records.trailer.fields} />
       </div>
 
       <div className="card p-4">

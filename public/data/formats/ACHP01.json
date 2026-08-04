@@ -1,8 +1,8 @@
 {
   "code": "ACHP01",
   "shortCode": "P01",
-  "name": "代收交易檔",
-  "description": "產生 ACH 代收交易上傳檔（V10）",
+  "name": "代收／代付交易檔",
+  "description": "產生 ACH 代收（SD）／代付（SC）交易上傳檔（V10），控制首錄／尾錄對照財金建檔小程式",
   "version": "V10",
   "recordLength": 250,
   "lineEnding": "\r\n",
@@ -56,7 +56,7 @@
       },
       {
         "key": "txid",
-        "label": "交易代號（代收類）",
+        "label": "交易代號（代收 SD／代付 SC）",
         "placeholder": "704",
         "inputType": "text",
         "length": 3,
@@ -69,7 +69,6 @@
           "rules": [
             {
               "type": "txid",
-              "minValue": 500,
               "message": "交易代號錯誤"
             }
           ]
@@ -296,18 +295,21 @@
       },
       {
         "key": "userNo",
-        "label": "用戶號碼",
+        "label": "用戶號碼（代收 SD 必填）",
         "inputType": "text",
         "length": 20,
         "charset": "alnum",
-        "required": true,
+        "required": false,
         "pad": {
           "side": "none"
         },
         "validation": {
           "rules": [
             {
-              "type": "requiredIfAny",
+              "type": "requiredIfTxType",
+              "txTypes": [
+                "SD"
+              ],
               "message": "用戶號碼未輸入"
             },
             {
@@ -385,7 +387,8 @@
           "id": "BOF",
           "source": "literal",
           "value": "BOF",
-          "length": 3
+          "length": 3,
+          "label": "首錄別"
         },
         {
           "id": "CDATA",
@@ -394,34 +397,39 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "資料代號"
         },
         {
           "id": "TDATE",
           "source": "header",
           "key": "date",
           "length": 8,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "處理日期"
         },
         {
           "id": "TTIME",
           "source": "runtime",
           "fn": "nowHms",
           "length": 6,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "處理時間"
         },
         {
           "id": "SORG",
           "source": "derived",
           "fn": "sorg",
           "length": 7,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "發送單位代號"
         },
         {
           "id": "RORG",
           "source": "literal",
           "value": "9990250",
-          "length": 7
+          "length": 7,
+          "label": "接收單位代號"
         },
         {
           "id": "VERNO",
@@ -430,13 +438,15 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "版次"
         },
         {
           "id": "FILLER",
           "source": "filler",
           "length": 210,
-          "fill": " "
+          "fill": " ",
+          "label": "空白"
         }
       ]
     },
@@ -446,7 +456,8 @@
           "id": "TYPE",
           "source": "literal",
           "value": "N",
-          "length": 1
+          "length": 1,
+          "label": "交易型態"
         },
         {
           "id": "TXTYPE",
@@ -456,7 +467,8 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "交易類別（SD 代收／SC 代付）"
         },
         {
           "id": "TXID",
@@ -467,7 +479,8 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "交易代號"
         },
         {
           "id": "SEQ",
@@ -478,21 +491,24 @@
           "pad": {
             "side": "left",
             "char": "0"
-          }
+          },
+          "label": "交易序號"
         },
         {
           "id": "PBANK",
           "source": "header",
           "key": "bankCode",
           "length": 7,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "提出行代號"
         },
         {
           "id": "PCLNO",
           "source": "header",
           "key": "account",
           "length": 16,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "發動者帳號"
         },
         {
           "id": "RBANK",
@@ -502,7 +518,8 @@
           "charset": "digit",
           "pad": {
             "side": "none"
-          }
+          },
+          "label": "提回行代號"
         },
         {
           "id": "RCLNO",
@@ -512,7 +529,8 @@
           "charset": "digit",
           "pad": {
             "side": "none"
-          }
+          },
+          "label": "收受者帳號"
         },
         {
           "id": "AMT",
@@ -524,19 +542,22 @@
             "side": "left",
             "char": "0"
           },
-          "transform": "floorInt"
+          "transform": "floorInt",
+          "label": "金額"
         },
         {
           "id": "RCODE",
           "source": "filler",
           "length": 2,
-          "fill": " "
+          "fill": " ",
+          "label": "退件理由代號"
         },
         {
           "id": "SCHD",
           "source": "literal",
           "value": "B",
-          "length": 1
+          "length": 1,
+          "label": "提示交換次序"
         },
         {
           "id": "CID",
@@ -547,7 +568,8 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "發動者統一編號"
         },
         {
           "id": "PID",
@@ -558,31 +580,36 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "收受者統一編號"
         },
         {
           "id": "SID",
           "source": "filler",
           "length": 6,
-          "fill": " "
+          "fill": " ",
+          "label": "上市上櫃公司代號"
         },
         {
           "id": "PDATE",
           "source": "filler",
           "length": 8,
-          "fill": " "
+          "fill": " ",
+          "label": "原提示交易日期"
         },
         {
           "id": "PSEQ",
           "source": "filler",
           "length": 8,
-          "fill": " "
+          "fill": " ",
+          "label": "原提示交易序號"
         },
         {
           "id": "PSCHD",
           "source": "filler",
           "length": 1,
-          "fill": " "
+          "fill": " ",
+          "label": "原提示交換次序"
         },
         {
           "id": "CNO",
@@ -593,37 +620,43 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "用戶號碼"
         },
         {
           "id": "NOTE",
           "source": "filler",
           "length": 40,
-          "fill": " "
+          "fill": " ",
+          "label": "發動者專用區"
         },
         {
           "id": "MEMO",
           "source": "filler",
           "length": 10,
-          "fill": " "
+          "fill": " ",
+          "label": "存摺摘要"
         },
         {
           "id": "CFEE",
           "source": "literal",
           "value": "00000",
-          "length": 5
+          "length": 5,
+          "label": "客戶支付手續費"
         },
         {
           "id": "NOTEB",
           "source": "filler",
           "length": 20,
-          "fill": " "
+          "fill": " ",
+          "label": "發動行專用區"
         },
         {
           "id": "FILLER",
           "source": "filler",
           "length": 39,
-          "fill": " "
+          "fill": " ",
+          "label": "空白"
         }
       ]
     },
@@ -633,7 +666,8 @@
           "id": "EOF",
           "source": "literal",
           "value": "EOF",
-          "length": 3
+          "length": 3,
+          "label": "尾錄別"
         },
         {
           "id": "CDATA",
@@ -642,27 +676,31 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "資料代號"
         },
         {
           "id": "TDATE",
           "source": "header",
           "key": "date",
           "length": 8,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "處理日期"
         },
         {
           "id": "SORG",
           "source": "derived",
           "fn": "sorg",
           "length": 7,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "發送單位代號"
         },
         {
           "id": "RORG",
           "source": "literal",
           "value": "9990250",
-          "length": 7
+          "length": 7,
+          "label": "接收單位代號"
         },
         {
           "id": "TCOUNT",
@@ -673,7 +711,8 @@
           "pad": {
             "side": "left",
             "char": "0"
-          }
+          },
+          "label": "總筆數"
         },
         {
           "id": "TAMT",
@@ -684,19 +723,22 @@
           "pad": {
             "side": "left",
             "char": "0"
-          }
+          },
+          "label": "總金額"
         },
         {
           "id": "YDATE",
           "source": "filler",
           "length": 8,
-          "fill": " "
+          "fill": " ",
+          "label": "前一營業日日期"
         },
         {
           "id": "FILLER",
           "source": "filler",
           "length": 187,
-          "fill": " "
+          "fill": " ",
+          "label": "空白"
         }
       ]
     }

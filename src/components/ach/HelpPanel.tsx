@@ -66,6 +66,26 @@ export function HelpPanel() {
 
       <div className="card p-5">
         <div className="mb-2 flex items-center gap-2">
+          <FileText className="size-5 text-primary" />
+          <h3 className="font-bold">檔案匯入</h3>
+        </div>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+          <li>
+            在各格式分頁按<strong className="text-fg">匯入檔案</strong>，選擇已產生的
+            ACH 固定長度 <code className="font-mono text-xs">.txt</code>
+          </li>
+          <li>
+            依 BOF 列 CDATA（檔案代號）自動對應 JSON 格式，並以
+            <code className="font-mono text-xs">records</code> 欄位定義切片預覽
+          </li>
+          <li>
+            預覽可切換「表單欄位／固定長度欄位／原始列」；確認後「套用到表單」覆寫該格式資料
+          </li>
+        </ul>
+      </div>
+
+      <div className="card p-5">
+        <div className="mb-2 flex items-center gap-2">
           <MonitorSmartphone className="size-5 text-primary" />
           <h3 className="font-bold">charset 與 pad</h3>
         </div>

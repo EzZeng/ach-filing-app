@@ -134,7 +134,9 @@ function App() {
           </div>
         ) : (
           <>
-            {activeSchema && <FormatPanel schema={activeSchema} />}
+            {activeSchema && (
+              <FormatPanel schema={activeSchema} onSelectFormat={selectTab} />
+            )}
             {tab === "schema" && <SchemaPanel />}
             {tab === "refs" && <RefsPanel />}
             {tab === "help" && <HelpPanel />}

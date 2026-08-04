@@ -17,7 +17,7 @@
     "format": "prettier --write .",
     "electron:dev": "npm run electron:renderer && electron .",
     "electron:build": "npm run build && electron-builder --dir",
-    "test:ach": "node scripts/test-ach.mjs",
+    "test:ach": "node scripts/test-ach.mjs && node scripts/test-ach-import.mjs",
     "electron:renderer": "npm run build:web && mkdir -p dist-electron && rm -rf dist-electron/renderer && cp -a dist-static dist-electron/renderer",
     "electron:pack": "npm run electron:renderer && electron-builder --win portable zip --x64 --publish never",
     "electron:pack:dir": "npm run electron:renderer && electron-builder --win dir --x64 --publish never",

@@ -9,7 +9,15 @@
 - Primary dev server: `npm run dev:web` → http://localhost:8080 (config `vite.static.config.ts`, `strictPort: true`, so 8080 must be free). This is the path the README and `startup.sh` use.
 - Do **not** use `npm run dev` for normal work — that starts the alternate TanStack Start SSR scaffold (`vite.config.ts`), which is not the maintained dev path.
 - `startup.sh` auto-starts `npm run dev:web` if nothing is already listening on 8080.
-- Electron (`npm run electron:dev`) and the customer standalone HTML build (`npm run build:customer` → `release/代收建檔小程式.html`) are optional packaging modes; not needed for core dev.
+- Electron (`npm run electron:dev`) and the customer standalone HTML build (`npm run build:customer` → `release/代收建檔小程式.html`) are packaging modes.
+
+### Delivery after each change
+- When a feature/fix change set is complete (before summarizing to the user), **always** run `npm run build:customer` and publish the install-free HTML/JS artifacts.
+- Copy outputs to `/opt/cursor/artifacts/customer-release/` (and reference them in the PR body):
+  - `release/代收建檔小程式.html` — single-file, double-click to open
+  - `release/ACH-Filing-*-standalone.html` — versioned alias of the same file
+  - `release/ACH-Filing-*-customer.zip` — zip package
+- `release/` is gitignored; do not commit build outputs into the repo.
 
 ### Checks (see `package.json` scripts)
 - `npm run lint` (eslint), `npm run typecheck` (tsc), `npm run test:ach` (JSON schema smoke test).

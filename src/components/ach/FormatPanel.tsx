@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FileDown,
+  FileUp,
   Plus,
   Trash2,
   Search,
@@ -40,11 +41,21 @@ import {
   EXPORT_FORMAT_META,
   type ExportFormatId,
 } from "@/lib/ach/exportFormats";
+import {
+  parseAchText,
+  resolveImportSchema,
+  type ImportResult,
+} from "@/lib/ach/import";
 import { normalizeSubmitDate } from "@/lib/ach/utils";
 import { saveAchFile, saveAchFiles } from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
+import { ImportPreviewDialog } from "./ImportPreviewDialog";
 
-type Props = { schema: FormatSchema };
+type Props = {
+  schema: FormatSchema;
+  /** 匯入偵測到其他檔案代號時，切換到對應分頁 */
+  onSelectFormat?: (code: string) => void;
+};
 
 const FORMAT_ICONS: Record<ExportFormatId, typeof FileText> = {
   txt: FileText,
@@ -52,8 +63,8 @@ const FORMAT_ICONS: Record<ExportFormatId, typeof FileText> = {
   js: FileCode2,
 };
 
-export function FormatPanel({ schema }: Props) {
-  const { txids, branches } = useRefStore();
+export function FormatPanel({ schema, onSelectFormat }: Props) {
+  const { txids, branches, formats } = useRefStore();
   const {
     ensureForm,
     getForm,
@@ -65,7 +76,11 @@ export function FormatPanel({ schema }: Props) {
     removeRow,
     clearRows,
     pasteRows,
+    loadFromImport,
   } = useFormStore();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   const [picker, setPicker] = useState<{
     mode: "txid" | "branch";
@@ -255,6 +270,38 @@ export function FormatPanel({ schema }: Props) {
     await handleGenerate([fmt]);
   }
 
+  async function handleImportFile(file: File) {
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      toast.error("無法讀取檔案");
+      return;
+    }
+    const target =
+      resolveImportSchema(text, formats, schema) ?? schema;
+    const result = parseAchText(text, target, { filename: file.name });
+    if (result.errors.length && result.detailCount === 0 && !result.lines.length) {
+      toast.error(result.errors[0] ?? "匯入失敗");
+      return;
+    }
+    setImportResult(result);
+  }
+
+  function applyImport(result: ImportResult) {
+    loadFromImport(result.schema, {
+      header: result.header,
+      rows: result.rows,
+    });
+    if (result.schema.code !== schema.code) {
+      onSelectFormat?.(result.schema.code);
+    }
+    setImportResult(null);
+    toast.success(
+      `已匯入 ${result.schema.code}（${result.detailCount} 筆明細）`,
+    );
+  }
+
   const selectOptions = (field: FormFieldDef) => {
     if (field.optionsFrom === "authOptions") return schema.authOptions ?? [];
     return [];
@@ -425,6 +472,25 @@ export function FormatPanel({ schema }: Props) {
                 </button>
               );
             })}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FileUp className="size-4" />
+              匯入檔案
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,text/plain"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleImportFile(file);
+              }}
+            />
             <button
               type="button"
               className="btn btn-secondary"
@@ -709,6 +775,14 @@ export function FormatPanel({ schema }: Props) {
             updateRow(schema.code, schema, picker.rowId, picker.key, code);
           }
         }}
+      />
+      <ImportPreviewDialog
+        open={!!importResult}
+        result={importResult}
+        txids={txids}
+        branches={branches}
+        onClose={() => setImportResult(null)}
+        onApply={applyImport}
       />
     </div>
   );

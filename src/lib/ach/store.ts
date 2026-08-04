@@ -56,6 +56,11 @@ type FormState = {
   removeRow: (code: string, id: string) => void;
   clearRows: (code: string, schema: FormatSchema) => void;
   pasteRows: (code: string, schema: FormatSchema, startIndex: number, text: string) => void;
+  /** 以匯入結果覆寫指定格式的表頭與明細（至少保留 15 列空白緩衝） */
+  loadFromImport: (
+    schema: FormatSchema,
+    data: { header: HeaderValues; rows: DetailRow[] },
+  ) => void;
   getForm: (code: string) => FormBundle | undefined;
 };
 
@@ -280,6 +285,32 @@ export const useFormStore = create<FormState>()(
             forms: { ...s.forms, [code]: { ...form, rows } },
           };
         });
+      },
+      loadFromImport: (schema, data) => {
+        const header = emptyHeader(schema);
+        for (const f of schema.form.header) {
+          const raw = data.header[f.key] ?? header[f.key] ?? "";
+          header[f.key] = sanitizeFieldInput(f, raw);
+        }
+        if (!header.date) header.date = todayRoc();
+
+        const imported = data.rows.map((src) => {
+          const row = emptyDetailRow(schema, newRowId());
+          for (const f of schema.form.detail) {
+            row[f.key] = sanitizeFieldInput(f, src[f.key] ?? "");
+          }
+          return row;
+        });
+        const pad = Math.max(0, 15 - imported.length);
+        const rows = [...imported, ...makeRows(schema, pad)];
+
+        set((s) => ({
+          activeCode: schema.code,
+          forms: {
+            ...s.forms,
+            [schema.code]: { header, rows },
+          },
+        }));
       },
       getForm: (code) => get().forms[code],
     }),

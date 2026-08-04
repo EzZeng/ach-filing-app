@@ -74,7 +74,7 @@ function App() {
                   代收建檔小程式
                 </h1>
                 <p className="text-xs text-white/70 sm:text-sm">
-                  ACH 檔案代號參數化 · JSON 格式 · HTML／JS 靜態版
+                  既有 P01／P02 檔檢核與加工 · 請先上傳 ACH 固定長度檔
                 </p>
               </div>
             </div>

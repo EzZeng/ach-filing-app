@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   FileDown,
   FileUp,
@@ -13,6 +13,8 @@ import {
   FileCode2,
   FileText,
   Globe,
+  Upload,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
@@ -63,6 +65,18 @@ const FORMAT_ICONS: Record<ExportFormatId, typeof FileText> = {
   js: FileCode2,
 };
 
+const hiddenFileInputStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
 export function FormatPanel({ schema, onSelectFormat }: Props) {
   const { txids, branches, formats } = useRefStore();
   const {
@@ -77,10 +91,18 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     clearRows,
     pasteRows,
     loadFromImport,
+    isWorkspaceOpen,
+    getWorkspace,
+    openManualWorkspace,
+    closeWorkspace,
   } = useFormStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const workspaceOpen = isWorkspaceOpen(schema.code);
+  const workspace = getWorkspace(schema.code);
 
   const [picker, setPicker] = useState<{
     mode: "txid" | "branch";
@@ -289,16 +311,20 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   }
 
   function applyImport(result: ImportResult) {
-    loadFromImport(result.schema, {
-      header: result.header,
-      rows: result.rows,
-    });
+    loadFromImport(
+      result.schema,
+      {
+        header: result.header,
+        rows: result.rows,
+      },
+      { fileName: result.filename },
+    );
     if (result.schema.code !== schema.code) {
       onSelectFormat?.(result.schema.code);
     }
     setImportResult(null);
     toast.success(
-      `已匯入 ${result.schema.code}（${result.detailCount} 筆明細）`,
+      `已匯入 ${result.schema.code}（${result.detailCount} 筆明細），可進行檢核與加工`,
     );
   }
 
@@ -306,6 +332,133 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     if (field.optionsFrom === "authOptions") return schema.authOptions ?? [];
     return [];
   };
+
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept=".txt,text/plain"
+      tabIndex={-1}
+      aria-hidden="true"
+      style={hiddenFileInputStyle}
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (file) void handleImportFile(file);
+      }}
+    />
+  );
+
+  // —— 預設：引導先上傳既有 P01／P02，隱藏新建表單 ——
+  if (!workspaceOpen) {
+    return (
+      <div className="space-y-4">
+        <div className="card overflow-hidden">
+          <div className="border-b border-border bg-surface-2/60 px-4 py-4 sm:px-5">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="badge badge-ok font-mono">{schema.code}</span>
+              <span className="badge badge-warn">
+                V{schema.version.replace(/^V/i, "")}
+              </span>
+              <span className="text-xs text-muted">列長 {schema.recordLength}</span>
+            </div>
+            <h2 className="text-lg font-bold text-fg">
+              {schema.shortCode} {schema.name}・檢核與加工
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              本工具以既有財金 ACH 固定長度檔（P01 代收／P02 授權）為主：
+              先上傳檔案檢核欄位與列長，再視需要修正後重新產出。
+            </p>
+          </div>
+
+          <div className="px-4 py-8 sm:px-8">
+            <div
+              className={`mx-auto flex max-w-xl flex-col items-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition ${
+                dragOver
+                  ? "border-primary bg-primary-soft/40"
+                  : "border-border-strong bg-surface-2/40"
+              }`}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) void handleImportFile(file);
+              }}
+            >
+              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary-soft text-primary">
+                <Upload className="size-7" />
+              </div>
+              <h3 className="text-base font-bold text-fg">請先上傳既有 ACH 檔</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                選擇或拖放 <code className="font-mono text-xs text-fg">.txt</code>{" "}
+                固定長度上傳檔（BOF 列 CDATA 為{" "}
+                <span className="font-mono text-fg">{schema.code}</span> 或其他已支援代號）。
+                上傳後可預覽、檢核並加工後再匯出。
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary mt-6"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <FileUp className="size-4" />
+                選擇檔案上傳
+                <ArrowRight className="size-4 opacity-80" />
+              </button>
+              {fileInput}
+              <ol className="mt-8 w-full max-w-sm space-y-2 text-left text-xs text-muted">
+                <li className="flex gap-2">
+                  <span className="font-mono font-bold text-primary">1</span>
+                  上傳既有 P01／P02（.txt）
+                </li>
+                <li className="flex gap-2">
+                  <span className="font-mono font-bold text-primary">2</span>
+                  預覽並確認表頭／明細／列長
+                </li>
+                <li className="flex gap-2">
+                  <span className="font-mono font-bold text-primary">3</span>
+                  檢核錯誤、修正後重新產生上傳檔
+                </li>
+              </ol>
+            </div>
+
+            <div className="mx-auto mt-6 max-w-xl text-center">
+              <button
+                type="button"
+                className="btn btn-ghost text-xs"
+                onClick={() => {
+                  openManualWorkspace(schema);
+                  toast.message("已開啟空白表單（進階／新建）");
+                }}
+              >
+                進階：不匯入，手動新建空白表單
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <ImportPreviewDialog
+          open={!!importResult}
+          result={importResult}
+          txids={txids}
+          branches={branches}
+          onClose={() => setImportResult(null)}
+          onApply={applyImport}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -318,12 +471,24 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                 V{schema.version.replace(/^V/i, "")}
               </span>
               <span className="text-xs text-muted">列長 {schema.recordLength}</span>
+              {workspace.source === "import" && (
+                <span className="badge badge-ok gap-1">
+                  <FileUp className="size-3" />
+                  已匯入
+                </span>
+              )}
+              {workspace.source === "manual" && (
+                <span className="badge badge-warn">手動新建</span>
+              )}
             </div>
             <h2 className="text-lg font-bold text-fg">
-              {schema.shortCode} {schema.name}
+              {schema.shortCode} {schema.name}・檢核與加工
             </h2>
             <p className="mt-0.5 text-sm text-muted">
-              {schema.description || "依 JSON 格式定義產生固定長度上傳檔"}
+              {workspace.fileName
+                ? `來源檔：${workspace.fileName} · 檢核欄位後可重新產生上傳檔`
+                : schema.description ||
+                  "檢核表頭／明細後產生固定長度上傳檔"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -413,13 +578,13 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           })}
         </div>
 
-        {/* 成品輸出格式 */}
+        {/* 成品輸出／加工 */}
         <div className="mt-4 rounded-lg border border-border bg-surface-2/70 p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <FileDown className="size-4 text-primary" />
-            <span className="text-sm font-semibold">成品輸出格式</span>
+            <span className="text-sm font-semibold">檢核後產出</span>
             <span className="text-xs text-muted">
-              由 JSON features.exportFormats 定義（txt / html / js）
+              修正資料後重新產生 TXT／HTML／JS
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -478,31 +643,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
               onClick={() => fileInputRef.current?.click()}
             >
               <FileUp className="size-4" />
-              匯入檔案
+              重新上傳
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,text/plain"
-              tabIndex={-1}
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                padding: 0,
-                margin: -1,
-                overflow: "hidden",
-                clip: "rect(0, 0, 0, 0)",
-                whiteSpace: "nowrap",
-                border: 0,
-              }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void handleImportFile(file);
-              }}
-            />
+            {fileInput}
             <button
               type="button"
               className="btn btn-secondary"
@@ -522,6 +665,16 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
               <Eraser className="size-4" />
               清空明細
             </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                closeWorkspace(schema);
+                toast.message("已關閉工作區，請重新上傳檔案");
+              }}
+            >
+              關閉並回到上傳
+            </button>
           </div>
         </div>
       </div>
@@ -530,9 +683,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         <div className="border-b border-border px-4 py-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h3 className="font-bold">明細資料</h3>
+              <h3 className="font-bold">明細資料（檢核）</h3>
               <p className="text-xs text-muted">
-                可從 Excel 複製後貼上（Tab 分隔：
+                依匯入內容檢核；可修正後重新產生。亦可從 Excel 貼上（Tab 分隔：
                 {schema.form.detail.map((f) => f.label).join("、")}）
                 {filterEnabled && " · 篩選僅影響畫面，產檔仍含全部明細"}
               </p>

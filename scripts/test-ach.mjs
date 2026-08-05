@@ -71,4 +71,27 @@ assert.ok(
 console.log(
   `OK ACHP01 SD/SC: SD=${byType.SD.length} SC=${byType.SC.length}; header/trailer field order matched`,
 );
+
+// ACHR01：提回／退件（TYPE=R、退件欄、YDATE）
+const achr01 = JSON.parse(fs.readFileSync(path.join(root, "ACHR01.json"), "utf8"));
+assert.equal(achr01.code, "ACHR01");
+const rType = achr01.records.detail.fields.find((f) => f.id === "TYPE");
+assert.equal(rType?.value, "R");
+const rcode = achr01.records.detail.fields.find((f) => f.id === "RCODE");
+assert.equal(rcode?.source, "detail");
+assert.equal(rcode?.key, "rcode");
+const pbank = achr01.records.detail.fields.find((f) => f.id === "PBANK");
+assert.equal(pbank?.source, "detail");
+assert.equal(pbank?.key, "bankCode");
+const rbank = achr01.records.detail.fields.find((f) => f.id === "RBANK");
+assert.equal(rbank?.key, "origBankCode");
+const ydate = achr01.records.trailer.fields.find((f) => f.id === "YDATE");
+assert.equal(ydate?.source, "header");
+assert.equal(ydate?.key, "ydate");
+assert.ok(
+  achr01.form.detail.some((f) => f.key === "rcode"),
+  "ACHR01 form 應含 rcode",
+);
+console.log("OK ACHR01 return schema: TYPE=R, RCODE/PDATE/PSEQ, YDATE from header");
+
 console.log("ACH JSON schema smoke tests passed");

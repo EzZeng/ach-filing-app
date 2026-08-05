@@ -76,7 +76,7 @@ function HomePage() {
                   代收建檔小程式
                 </h1>
                 <p className="text-xs text-white/70 sm:text-sm">
-                  既有 P01／P02 檔檢核與加工 · 請先上傳 ACH 固定長度檔
+                  既有 P01／R01／P02 檔檢核與加工 · P01 可轉檔 R01
                 </p>
               </div>
             </div>

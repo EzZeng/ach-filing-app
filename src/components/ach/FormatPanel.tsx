@@ -15,11 +15,13 @@ import {
   Globe,
   Upload,
   ArrowRight,
+  ArrowRightLeft,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
 import type { FormatSchema, FormFieldDef } from "@/lib/ach/schema";
+import { convertP01ToR01 } from "@/lib/ach/convertR01";
 import {
   formatTxTypeLabel,
   generateFromSchema,
@@ -54,6 +56,7 @@ import {
 import { normalizeSubmitDate } from "@/lib/ach/utils";
 import { saveAchFile, saveAchFiles } from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
+import { ConvertR01Dialog } from "./ConvertR01Dialog";
 import {
   ControlHeaderPreview,
   ControlTrailerPreview,
@@ -111,6 +114,8 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     null,
   );
   const [dragOver, setDragOver] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   const workspaceOpen = isWorkspaceOpen(schema.code);
   const workspace = getWorkspace(schema.code);
@@ -253,7 +258,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     blurHeader(schema.code, schema, field.key);
   }
 
-  function validateBeforeGenerate(): boolean {
+  function validateFormData(): boolean {
     if (headerHasError(headerErrs)) {
       toast.error("提出／發動者資料輸入有誤");
       return false;
@@ -273,6 +278,11 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       toast.error("尚無有效明細資料");
       return false;
     }
+    return true;
+  }
+
+  function validateBeforeGenerate(): boolean {
+    if (!validateFormData()) return false;
     if (selectedExports.length === 0) {
       toast.error("請至少選擇一種輸出格式");
       return false;
@@ -314,6 +324,46 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   async function handleGenerateOne(fmt: ExportFormatId) {
     await handleGenerate([fmt]);
+  }
+
+  async function handleConvertToR01(opts: {
+    rcode: string;
+    ydate: string;
+    pdate: string;
+  }) {
+    const r01 = formats.ACHR01;
+    if (!r01) {
+      toast.error("找不到 ACHR01 格式定義");
+      return;
+    }
+    if (!validateFormData()) return;
+    setConverting(true);
+    try {
+      const result = convertP01ToR01(
+        r01,
+        header,
+        rows,
+        txids,
+        branches,
+        opts,
+      );
+      await saveAchFiles(
+        result.files.map((f) => ({
+          filename: f.filename,
+          content: f.content,
+          mime: "text/plain;charset=utf-8",
+        })),
+      );
+      const names = result.files.map((f) => f.filename).join("、");
+      toast.success(
+        `已轉檔 ${names}（${result.detailCount} 筆，RCODE=${result.rcode}）`,
+      );
+      setConvertOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "轉檔失敗");
+    } finally {
+      setConverting(false);
+    }
   }
 
   async function handleImportFile(file: File) {
@@ -512,6 +562,20 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       onFilterScan={handleImportFilterScan}
     />
   );
+
+  const convertDialog =
+    schema.code === "ACHP01" ? (
+      <ConvertR01Dialog
+        open={convertOpen}
+        detailCount={stats.count}
+        tdate={String(header.date ?? "")}
+        busy={converting}
+        onClose={() => {
+          if (!converting) setConvertOpen(false);
+        }}
+        onConfirm={handleConvertToR01}
+      />
+    ) : null;
 
   // —— 預設：引導先上傳既有 P01／P02，隱藏新建表單 ——
   if (!workspaceOpen) {
@@ -822,6 +886,19 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                 ? `（${selectedExports.length}）`
                 : ""}
             </button>
+            {schema.code === "ACHP01" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (!validateFormData()) return;
+                  setConvertOpen(true);
+                }}
+              >
+                <ArrowRightLeft className="size-4" />
+                轉檔 R01
+              </button>
+            ) : null}
             {exportFormats.map((fmt) => {
               const meta = EXPORT_FORMAT_META[fmt];
               const Icon = FORMAT_ICONS[fmt];
@@ -1142,6 +1219,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         }}
       />
       {importDialog}
+      {convertDialog}
     </div>
   );
 }

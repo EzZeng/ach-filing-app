@@ -86,6 +86,19 @@ export function todayRoc(): string {
   );
 }
 
+/** 民國日期的前一日（簡易日曆日，非營業日曆） */
+export function prevRocDate(roc: string): string | null {
+  const dt = rocToDate(roc);
+  if (!dt) return null;
+  dt.setDate(dt.getDate() - 1);
+  const y = dt.getFullYear() - 1911;
+  return (
+    padLeft(y, 4) +
+    padLeft(dt.getMonth() + 1, 2) +
+    padLeft(dt.getDate(), 2)
+  );
+}
+
 /** HHMMSS */
 export function nowHms(): string {
   const now = new Date();

@@ -13,12 +13,15 @@ export function HelpPanel() {
         </div>
         <p className="text-sm leading-relaxed text-muted">
           以既有財金 ACH <strong className="text-fg">P01 代收／代付</strong>／
+          <strong className="text-fg">R01 提回／退件</strong>／
           <strong className="text-fg">P02 授權</strong>固定長度檔為主，進行
           <strong className="text-fg">檢核與加工</strong>。
           開啟後請先上傳檔案；表單新建為進階選項。
           ACHP01 明細<strong className="text-fg">交易類別</strong>依交易代號帶入：
           <strong className="text-fg">SD＝代收</strong>、
           <strong className="text-fg">SC＝代付</strong>。
+          於 P01 可<strong className="text-fg">轉檔 R01</strong>
+          （TYPE=R、對調提出／提回行與帳號、填入退件理由）。
           檔案代號與欄位格式皆以 JSON 參數化。
         </p>
       </div>
@@ -29,10 +32,10 @@ export function HelpPanel() {
           <h3 className="font-bold">建議流程</h3>
         </div>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-          <li>上傳既有 ACHP01／ACHP02 <code className="font-mono text-xs">.txt</code></li>
+          <li>上傳既有 ACHP01／ACHR01／ACHP02 <code className="font-mono text-xs">.txt</code></li>
           <li>預覽表頭、明細、固定長度欄位與原始列長</li>
           <li>套用後檢核錯誤、修正資料</li>
-          <li>重新產生 TXT（或 HTML／JS）上傳檔</li>
+          <li>重新產生 TXT（或 HTML／JS）上傳檔；P01 可轉檔為 ACHR01</li>
         </ol>
       </div>
 

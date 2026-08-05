@@ -1,0 +1,1021 @@
+{
+  "code": "ACHR01",
+  "shortCode": "R01",
+  "name": "提回／退件檔",
+  "description": "ACHP01 提回／退件（TYPE=R）；可由代收／代付提出檔轉檔產生，對照財金 ACHP01/ACHR01 規格",
+  "version": "V10",
+  "recordLength": 250,
+  "lineEnding": "\r\n",
+  "filenamePattern": "{code}_{date}{txid}{taxId}.txt",
+  "features": {
+    "sumAmount": true,
+    "amountKey": "amount",
+    "authOptions": false,
+    "detailFilter": true,
+    "exportFormats": [
+      "txt"
+    ]
+  },
+  "form": {
+    "header": [
+      {
+        "key": "date",
+        "label": "處理日期（民國）",
+        "placeholder": "01151231",
+        "inputType": "rocDate",
+        "length": 8,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "required",
+              "message": "日期長度請輸入八碼"
+            },
+            {
+              "type": "exactLength",
+              "length": 8,
+              "message": "日期長度請輸入八碼"
+            },
+            {
+              "type": "rocDate",
+              "notPast": true
+            }
+          ]
+        },
+        "picker": null,
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
+      },
+      {
+        "key": "txid",
+        "label": "交易代號（代收 SD／代付 SC）",
+        "placeholder": "704",
+        "inputType": "text",
+        "length": 3,
+        "charset": "digit",
+        "required": false,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "txid",
+              "message": "交易代號錯誤"
+            }
+          ]
+        },
+        "picker": "txid",
+        "metaFrom": "txid",
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
+      },
+      {
+        "key": "bankCode",
+        "label": "退件行銀行代號（發送單位）",
+        "placeholder": "0040000",
+        "inputType": "text",
+        "length": 7,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "required",
+              "message": "未輸入"
+            },
+            {
+              "type": "branchCode",
+              "message": "銀行代號錯誤"
+            }
+          ]
+        },
+        "picker": "branch",
+        "metaFrom": "branch",
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
+      },
+      {
+        "key": "account",
+        "label": "原收受者帳號（參考）",
+        "placeholder": "16碼帳號",
+        "inputType": "text",
+        "length": 16,
+        "charset": "digit",
+        "required": false,
+        "pad": {
+          "side": "left",
+          "char": "0",
+          "onBlur": true
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "maxLength",
+              "length": 16,
+              "message": "帳號長度不符"
+            }
+          ]
+        },
+        "picker": null,
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
+      },
+      {
+        "key": "taxId",
+        "label": "公司／機關統編",
+        "placeholder": "8或10碼",
+        "inputType": "text",
+        "length": 10,
+        "charset": "alnum",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "required",
+              "message": "未輸入"
+            },
+            {
+              "type": "oneOfLengths",
+              "lengths": [
+                8,
+                10
+              ],
+              "message": "統編應為8或10碼"
+            }
+          ]
+        },
+        "picker": null,
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
+      },
+      {
+        "key": "ydate",
+        "label": "前一營業日（民國）",
+        "placeholder": "01150803",
+        "inputType": "rocDate",
+        "length": 8,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "required",
+              "message": "前一營業日未輸入"
+            },
+            {
+              "type": "exactLength",
+              "length": 8,
+              "message": "日期長度請輸入八碼"
+            },
+            {
+              "type": "rocDate"
+            }
+          ]
+        },
+        "picker": null,
+        "ui": {
+          "mono": true,
+          "colSpan": 1
+        }
+      }
+    ],
+    "detail": [
+      {
+        "key": "bankCode",
+        "label": "退件行代號（原提回行）",
+        "inputType": "text",
+        "length": 7,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "收受者銀行代號未輸入"
+            },
+            {
+              "type": "branchCode",
+              "message": "收受者銀行代號錯誤"
+            }
+          ]
+        },
+        "picker": "branch",
+        "export": {
+          "charset": "digit",
+          "length": 7,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "account",
+        "label": "原收受者帳號",
+        "inputType": "text",
+        "length": 16,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "left",
+          "char": "0",
+          "onBlur": true
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "收受者帳號未輸入"
+            },
+            {
+              "type": "maxLength",
+              "length": 16,
+              "message": "收受者帳號長度不符"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "digit",
+          "length": 16,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "9rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "taxId",
+        "label": "收受者統一編號",
+        "inputType": "text",
+        "length": 10,
+        "charset": "alnum",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "收受者統一編號未輸入"
+            },
+            {
+              "type": "oneOfLengths",
+              "lengths": [
+                8,
+                10
+              ],
+              "message": "統編應為8或10碼"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "alnum",
+          "length": 10,
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "userNo",
+        "label": "用戶號碼（代收 SD 必填）",
+        "inputType": "text",
+        "length": 20,
+        "charset": "alnum",
+        "required": false,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfTxType",
+              "txTypes": [
+                "SD"
+              ],
+              "message": "用戶號碼未輸入"
+            },
+            {
+              "type": "maxLength",
+              "length": 20,
+              "message": "用戶號碼不可超過20個字"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "alnum",
+          "length": 20,
+          "pad": {
+            "side": "right",
+            "char": " "
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "amount",
+        "label": "金額",
+        "inputType": "amount",
+        "length": 10,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "金額未輸入"
+            },
+            {
+              "type": "number",
+              "message": "金額必須是數字"
+            },
+            {
+              "type": "maxIntegerDigits",
+              "length": 10,
+              "message": "金額最多只能輸入10位數"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "digit",
+          "length": 10,
+          "pad": {
+            "side": "left",
+            "char": "0"
+          },
+          "transform": "floorInt"
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "6rem",
+          "align": "right"
+        },
+        "filterable": true
+      },
+      {
+        "key": "origBankCode",
+        "label": "原提示行代號",
+        "inputType": "text",
+        "length": 7,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "原提示行代號未輸入"
+            },
+            {
+              "type": "branchCode",
+              "message": "原提示行代號錯誤"
+            }
+          ]
+        },
+        "picker": "branch",
+        "export": {
+          "charset": "digit",
+          "length": 7,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "origAccount",
+        "label": "原發動者帳號",
+        "inputType": "text",
+        "length": 16,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "left",
+          "char": "0",
+          "onBlur": true
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "原發動者帳號未輸入"
+            },
+            {
+              "type": "maxLength",
+              "length": 16,
+              "message": "帳號長度不符"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "digit",
+          "length": 16,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "9rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "rcode",
+        "label": "退件理由代號",
+        "inputType": "text",
+        "length": 2,
+        "charset": "alnum",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "退件理由代號未輸入"
+            },
+            {
+              "type": "exactLength",
+              "length": 2,
+              "message": "退件理由代號須為2碼"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "alnum",
+          "length": 2,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "5rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "pdate",
+        "label": "原提示交易日期",
+        "inputType": "rocDate",
+        "length": 8,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "原提示交易日期未輸入"
+            },
+            {
+              "type": "exactLength",
+              "length": 8,
+              "message": "日期長度請輸入八碼"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "digit",
+          "length": 8,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "7rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "pseq",
+        "label": "原提示交易序號",
+        "inputType": "text",
+        "length": 8,
+        "charset": "digit",
+        "required": true,
+        "pad": {
+          "side": "left",
+          "char": "0",
+          "onBlur": true
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "requiredIfAny",
+              "message": "原提示交易序號未輸入"
+            },
+            {
+              "type": "maxLength",
+              "length": 8,
+              "message": "序號最多8碼"
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "digit",
+          "length": 8,
+          "pad": {
+            "side": "left",
+            "char": "0"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "6rem"
+        },
+        "filterable": true
+      },
+      {
+        "key": "pschd",
+        "label": "原提示交換次序",
+        "inputType": "text",
+        "length": 1,
+        "charset": "alnum",
+        "required": false,
+        "pad": {
+          "side": "none"
+        },
+        "validation": {
+          "rules": [
+            {
+              "type": "maxLength",
+              "length": 1
+            }
+          ]
+        },
+        "picker": null,
+        "export": {
+          "charset": "alnum",
+          "length": 1,
+          "pad": {
+            "side": "none"
+          }
+        },
+        "ui": {
+          "mono": true,
+          "minWidth": "4rem"
+        },
+        "filterable": false
+      }
+    ]
+  },
+  "records": {
+    "header": {
+      "fields": [
+        {
+          "id": "BOF",
+          "source": "literal",
+          "value": "BOF",
+          "length": 3,
+          "label": "首錄別"
+        },
+        {
+          "id": "CDATA",
+          "source": "formatCode",
+          "length": 6,
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "資料代號"
+        },
+        {
+          "id": "TDATE",
+          "source": "header",
+          "key": "date",
+          "length": 8,
+          "charset": "digit",
+          "label": "處理日期"
+        },
+        {
+          "id": "TTIME",
+          "source": "runtime",
+          "fn": "nowHms",
+          "length": 6,
+          "charset": "digit",
+          "label": "處理時間"
+        },
+        {
+          "id": "SORG",
+          "source": "derived",
+          "fn": "sorg",
+          "length": 7,
+          "charset": "digit",
+          "label": "發送單位代號"
+        },
+        {
+          "id": "RORG",
+          "source": "literal",
+          "value": "9990250",
+          "length": 7,
+          "label": "接收單位代號"
+        },
+        {
+          "id": "VERNO",
+          "source": "version",
+          "length": 3,
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "版次"
+        },
+        {
+          "id": "FILLER",
+          "source": "filler",
+          "length": 210,
+          "fill": " ",
+          "label": "空白"
+        }
+      ]
+    },
+    "detail": {
+      "fields": [
+        {
+          "id": "TYPE",
+          "source": "literal",
+          "value": "R",
+          "length": 1,
+          "label": "交易型態"
+        },
+        {
+          "id": "TXTYPE",
+          "source": "derived",
+          "fn": "txType",
+          "length": 2,
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "交易類別（SD 代收／SC 代付）"
+        },
+        {
+          "id": "TXID",
+          "source": "header",
+          "key": "txid",
+          "length": 3,
+          "charset": "digit",
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "交易代號"
+        },
+        {
+          "id": "SEQ",
+          "source": "derived",
+          "fn": "seq",
+          "length": 8,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          },
+          "label": "交易序號"
+        },
+        {
+          "id": "PBANK",
+          "source": "detail",
+          "key": "bankCode",
+          "length": 7,
+          "charset": "digit",
+          "label": "提出行代號（退件行）",
+          "pad": {
+            "side": "none"
+          }
+        },
+        {
+          "id": "PCLNO",
+          "source": "detail",
+          "key": "account",
+          "length": 16,
+          "charset": "digit",
+          "label": "發動者帳號（原收受者帳號）",
+          "pad": {
+            "side": "none"
+          }
+        },
+        {
+          "id": "RBANK",
+          "source": "detail",
+          "key": "origBankCode",
+          "length": 7,
+          "charset": "digit",
+          "pad": {
+            "side": "none"
+          },
+          "label": "提回行代號（原提示行）"
+        },
+        {
+          "id": "RCLNO",
+          "source": "detail",
+          "key": "origAccount",
+          "length": 16,
+          "charset": "digit",
+          "pad": {
+            "side": "none"
+          },
+          "label": "收受者帳號（原發動者帳號）"
+        },
+        {
+          "id": "AMT",
+          "source": "detail",
+          "key": "amount",
+          "length": 10,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          },
+          "transform": "floorInt",
+          "label": "金額"
+        },
+        {
+          "id": "RCODE",
+          "source": "detail",
+          "key": "rcode",
+          "length": 2,
+          "charset": "alnum",
+          "pad": {
+            "side": "none"
+          },
+          "label": "退件理由代號"
+        },
+        {
+          "id": "SCHD",
+          "source": "literal",
+          "value": "B",
+          "length": 1,
+          "label": "提示交換次序"
+        },
+        {
+          "id": "CID",
+          "source": "header",
+          "key": "taxId",
+          "length": 10,
+          "charset": "alnum",
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "發動者統一編號"
+        },
+        {
+          "id": "PID",
+          "source": "detail",
+          "key": "taxId",
+          "length": 10,
+          "charset": "alnum",
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "收受者統一編號"
+        },
+        {
+          "id": "SID",
+          "source": "filler",
+          "length": 6,
+          "fill": " ",
+          "label": "上市上櫃公司代號"
+        },
+        {
+          "id": "PDATE",
+          "source": "detail",
+          "key": "pdate",
+          "length": 8,
+          "charset": "digit",
+          "pad": {
+            "side": "none"
+          },
+          "label": "原提示交易日期"
+        },
+        {
+          "id": "PSEQ",
+          "source": "detail",
+          "key": "pseq",
+          "length": 8,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          },
+          "label": "原提示交易序號"
+        },
+        {
+          "id": "PSCHD",
+          "source": "detail",
+          "key": "pschd",
+          "length": 1,
+          "charset": "alnum",
+          "pad": {
+            "side": "none"
+          },
+          "label": "原提示交換次序"
+        },
+        {
+          "id": "CNO",
+          "source": "detail",
+          "key": "userNo",
+          "length": 20,
+          "charset": "alnum",
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "用戶號碼"
+        },
+        {
+          "id": "NOTE",
+          "source": "filler",
+          "length": 40,
+          "fill": " ",
+          "label": "發動者專用區"
+        },
+        {
+          "id": "MEMO",
+          "source": "filler",
+          "length": 10,
+          "fill": " ",
+          "label": "存摺摘要"
+        },
+        {
+          "id": "CFEE",
+          "source": "literal",
+          "value": "00000",
+          "length": 5,
+          "label": "客戶支付手續費"
+        },
+        {
+          "id": "NOTEB",
+          "source": "filler",
+          "length": 20,
+          "fill": " ",
+          "label": "發動行專用區"
+        },
+        {
+          "id": "FILLER",
+          "source": "filler",
+          "length": 39,
+          "fill": " ",
+          "label": "空白"
+        }
+      ]
+    },
+    "trailer": {
+      "fields": [
+        {
+          "id": "EOF",
+          "source": "literal",
+          "value": "EOF",
+          "length": 3,
+          "label": "尾錄別"
+        },
+        {
+          "id": "CDATA",
+          "source": "formatCode",
+          "length": 6,
+          "pad": {
+            "side": "right",
+            "char": " "
+          },
+          "label": "資料代號"
+        },
+        {
+          "id": "TDATE",
+          "source": "header",
+          "key": "date",
+          "length": 8,
+          "charset": "digit",
+          "label": "處理日期"
+        },
+        {
+          "id": "SORG",
+          "source": "derived",
+          "fn": "sorg",
+          "length": 7,
+          "charset": "digit",
+          "label": "發送單位代號"
+        },
+        {
+          "id": "RORG",
+          "source": "literal",
+          "value": "9990250",
+          "length": 7,
+          "label": "接收單位代號"
+        },
+        {
+          "id": "TCOUNT",
+          "source": "derived",
+          "fn": "totalCount",
+          "length": 8,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          },
+          "label": "總筆數"
+        },
+        {
+          "id": "TAMT",
+          "source": "derived",
+          "fn": "totalAmount",
+          "length": 16,
+          "charset": "digit",
+          "pad": {
+            "side": "left",
+            "char": "0"
+          },
+          "label": "總金額"
+        },
+        {
+          "id": "YDATE",
+          "source": "header",
+          "length": 8,
+          "label": "前一營業日日期",
+          "key": "ydate",
+          "charset": "digit",
+          "pad": {
+            "side": "none"
+          }
+        },
+        {
+          "id": "FILLER",
+          "source": "filler",
+          "length": 187,
+          "fill": " ",
+          "label": "空白"
+        }
+      ]
+    }
+  }
+}

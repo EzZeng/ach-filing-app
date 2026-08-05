@@ -8,7 +8,6 @@ import {
   Eraser,
   AlertTriangle,
   CheckCircle2,
-  Filter,
   FilterX,
   FileCode2,
   FileText,
@@ -1072,29 +1071,11 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
 
           {filterEnabled && (
-            <div className="mt-3 space-y-2 rounded-lg border border-border bg-surface-2/80 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Filter className="size-4 text-primary" />
-                <span className="text-sm font-semibold">明細篩選</span>
-                <span className="text-xs text-muted">
-                  依 JSON form.detail 欄位（預設全部可篩，可設 filterable: false）
-                </span>
-                {filtersActive && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost ml-auto h-8 gap-1 px-2 text-xs"
-                    onClick={clearAllFilters}
-                  >
-                    <FilterX className="size-3.5" />
-                    清除篩選
-                  </button>
-                )}
-              </div>
-
-              <div className="relative max-w-md">
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="relative min-w-[12rem] max-w-sm flex-1">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
                 <input
-                  className="field-input h-9 pl-8 text-sm"
+                  className="field-input h-8 pl-8 text-sm"
                   placeholder="全域搜尋（任一欄位包含…）"
                   value={filterOpts.global ?? ""}
                   onChange={(e) =>
@@ -1102,64 +1083,44 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                   }
                 />
               </div>
-
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                {schema.form.detail.map((field) => {
-                  if (!isFieldFilterable(field)) return null;
-                  return (
-                    <div key={field.key}>
-                      <label
-                        className="field-label"
-                        htmlFor={`filter-${schema.code}-${field.key}`}
-                      >
-                        {field.label}
-                      </label>
-                      <input
-                        id={`filter-${schema.code}-${field.key}`}
-                        className={`field-input h-9 text-sm ${field.ui?.mono ? "font-mono" : ""} ${
-                          (filters[field.key] ?? "").trim()
-                            ? "ring-1 ring-primary/40"
-                            : ""
-                        }`}
-                        placeholder={`篩選 ${field.label}`}
-                        value={filters[field.key] ?? ""}
-                        onChange={(e) => setFilterKey(field.key, e.target.value)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4 pt-1 text-sm">
-                <label className="inline-flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-[var(--color-primary)]"
-                    checked={!!filterOpts.hideEmpty}
-                    onChange={(e) =>
-                      setFilterOpts((o) => ({
-                        ...o,
-                        hideEmpty: e.target.checked,
-                      }))
-                    }
-                  />
-                  隱藏空白列
-                </label>
-                <label className="inline-flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-[var(--color-primary)]"
-                    checked={!!filterOpts.onlyErrors}
-                    onChange={(e) =>
-                      setFilterOpts((o) => ({
-                        ...o,
-                        onlyErrors: e.target.checked,
-                      }))
-                    }
-                  />
-                  只顯示錯誤列
-                </label>
-              </div>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-[var(--color-primary)]"
+                  checked={!!filterOpts.hideEmpty}
+                  onChange={(e) =>
+                    setFilterOpts((o) => ({
+                      ...o,
+                      hideEmpty: e.target.checked,
+                    }))
+                  }
+                />
+                隱藏空白列
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-[var(--color-primary)]"
+                  checked={!!filterOpts.onlyErrors}
+                  onChange={(e) =>
+                    setFilterOpts((o) => ({
+                      ...o,
+                      onlyErrors: e.target.checked,
+                    }))
+                  }
+                />
+                只顯示錯誤列
+              </label>
+              {filtersActive && (
+                <button
+                  type="button"
+                  className="btn btn-ghost h-8 gap-1 px-2 text-xs"
+                  onClick={clearAllFilters}
+                >
+                  <FilterX className="size-3.5" />
+                  清除篩選
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1168,15 +1129,59 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           <table className="data-table">
             <thead>
               <tr>
-                <th className="w-10">#</th>
-                {schema.form.detail.map((f) => (
-                  <th key={f.key} style={{ minWidth: f.ui?.minWidth }}>
-                    {f.label}
-                  </th>
-                ))}
-                <th className="min-w-32">銀行名稱</th>
-                <th className="min-w-40">錯誤訊息</th>
-                <th className="w-12" />
+                <th className="w-10">
+                  <span className="th-label">#</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
+                {schema.form.detail.map((f) => {
+                  const canFilter = filterEnabled && isFieldFilterable(f);
+                  const active = Boolean((filters[f.key] ?? "").trim());
+                  return (
+                    <th key={f.key} style={{ minWidth: f.ui?.minWidth }}>
+                      <span className="th-label">{f.label}</span>
+                      {canFilter ? (
+                        <input
+                          className={`th-filter ${active ? "is-active" : ""}`}
+                          aria-label={`篩選 ${f.label}`}
+                          placeholder="篩選…"
+                          value={filters[f.key] ?? ""}
+                          onChange={(e) => setFilterKey(f.key, e.target.value)}
+                        />
+                      ) : filterEnabled ? (
+                        <span className="block h-[1.7rem]" aria-hidden />
+                      ) : null}
+                    </th>
+                  );
+                })}
+                <th className="min-w-32">
+                  <span className="th-label">銀行名稱</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
+                <th className="min-w-40">
+                  <span className="th-label">錯誤訊息</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
+                <th className="w-12">
+                  {filterEnabled && filtersActive ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost h-7 px-1 text-[0.7rem] text-primary-fg"
+                      onClick={clearAllFilters}
+                      title="清除篩選"
+                      aria-label="清除篩選"
+                    >
+                      <FilterX className="size-3.5" />
+                    </button>
+                  ) : filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
               </tr>
             </thead>
             <tbody>

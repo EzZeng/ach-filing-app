@@ -22,11 +22,17 @@ import {
   partitionAchFile,
   partitionIndexFilename,
   planPartitions,
+  planPartitionsForEdit,
   stringifyPartitionIndex,
   type PartitionIndex,
   type PartitionProgress,
 } from "@/lib/ach/partition";
+import {
+  parsePartToForm,
+  usePartitionStore,
+} from "@/lib/ach/partitionStore";
 import { RETURN_CODES } from "@/lib/ach/convertR01";
+import { IMPORT_LIMITS } from "@/lib/ach/import";
 import { prevRocDate, safeDigits } from "@/lib/ach/utils";
 
 type Mode = "split" | "merge" | "convert";
@@ -43,6 +49,12 @@ type Props = {
   detailCount?: number;
   tdate?: string;
   onClose: () => void;
+  /** 分割後開啟網頁編輯：載入第一包到表單 */
+  onOpenPartitionEdit?: (payload: {
+    header: import("@/lib/ach/schema").HeaderValues;
+    rows: import("@/lib/ach/schema").DetailRow[];
+    fileName: string;
+  }) => void;
 };
 
 export function PartitionToolsDialog({
@@ -56,19 +68,28 @@ export function PartitionToolsDialog({
   detailCount = 0,
   tdate = "",
   onClose,
+  onOpenPartitionEdit,
 }: Props) {
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<PartitionProgress | null>(null);
+  const startSession = usePartitionStore((s) => s.startSession);
+  const setActiveIndex = usePartitionStore((s) => s.setActiveIndex);
 
-  const suggested = useMemo(
-    () =>
-      planPartitions(detailCount || 1, {
+  const suggested = useMemo(() => {
+    try {
+      return planPartitionsForEdit(detailCount || 1);
+    } catch {
+      return planPartitions(detailCount || 1, {
         chunkSize: PARTITION_LIMITS.defaultChunkSize,
-      }),
-    [detailCount],
-  );
+      });
+    }
+  }, [detailCount]);
   const [partCount, setPartCount] = useState(suggested.partCount || 1);
+  /** 分割後在網頁逐包編輯（預設開啟） */
+  const [openForEdit, setOpenForEdit] = useState(true);
+  /** 是否另外下載 ZIP */
+  const [alsoDownload, setAlsoDownload] = useState(false);
 
   const [rcode, setRcode] = useState("04");
   const [ydate, setYdate] = useState(
@@ -93,15 +114,25 @@ export function PartitionToolsDialog({
       toast.error("沒有來源檔");
       return;
     }
-    const y = Math.min(
-      Math.max(1, Math.floor(partCount)),
-      PARTITION_LIMITS.maxPartCount,
-    );
     setBusy(true);
     setProgress(null);
     try {
-      const parts: { filename: string; content: string; mime?: string }[] =
-        [];
+      let y = Math.min(
+        Math.max(1, Math.floor(partCount)),
+        PARTITION_LIMITS.maxPartCount,
+      );
+      if (openForEdit) {
+        const plan = planPartitionsForEdit(detailCount || 1, y);
+        if (plan.autoRaised) {
+          toast.message(
+            `為可在網頁編輯，已自動調整為 ${plan.partCount} 包（每包 ≤ ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）`,
+          );
+        }
+        y = plan.partCount;
+        setPartCount(y);
+      }
+
+      const partFiles: { filename: string; content: string }[] = [];
       const index = await partitionAchFile(
         sourceFile,
         schema,
@@ -111,27 +142,59 @@ export function PartitionToolsDialog({
           partCount: y,
           onProgress: setProgress,
           onPartition: (p) => {
-            parts.push({ filename: p.filename, content: p.content });
+            partFiles.push({ filename: p.filename, content: p.content });
           },
         },
       );
-      parts.push({
-        filename: partitionIndexFilename(sourceFile.name),
-        content: stringifyPartitionIndex(index),
-        mime: "application/json;charset=utf-8",
-      });
-      const base =
-        sourceFile.name.replace(/\.[^.]+$/, "") || schema.code;
-      const saved = await saveAchFiles(parts, {
-        zipName: `${base}.parts.zip`,
-      });
-      if (saved.method === "canceled") {
-        toast.message("已取消儲存");
-        return;
+
+      if (alsoDownload || !openForEdit) {
+        const downloadList = [
+          ...partFiles,
+          {
+            filename: partitionIndexFilename(sourceFile.name),
+            content: stringifyPartitionIndex(index),
+            mime: "application/json;charset=utf-8",
+          },
+        ];
+        const base =
+          sourceFile.name.replace(/\.[^.]+$/, "") || schema.code;
+        const saved = await saveAchFiles(downloadList, {
+          zipName: `${base}.parts.zip`,
+        });
+        if (saved.method === "canceled" && !openForEdit) {
+          toast.message("已取消儲存");
+          return;
+        }
+        if (saved.method !== "canceled") {
+          toast.success(
+            `已下載分割包 · ${describeSaveResult(saved)}`,
+          );
+        }
       }
-      toast.success(
-        `已分割 ${index.partCount} 檔（共 ${index.totalDetailCount.toLocaleString("zh-TW")} 筆）· ${describeSaveResult(saved)}`,
-      );
+
+      if (openForEdit) {
+        startSession({
+          formatCode: schema.code,
+          sourceFilename: sourceFile.name,
+          index,
+          parts: partFiles,
+        });
+        const first = partFiles[0];
+        if (!first) throw new Error("分割結果為空");
+        const parsed = parsePartToForm(schema, first.content, first.filename);
+        setActiveIndex(0);
+        onOpenPartitionEdit?.({
+          header: parsed.header,
+          rows: parsed.rows,
+          fileName: first.filename,
+        });
+        toast.success(
+          `已分割 ${index.partCount} 包（共 ${index.totalDetailCount.toLocaleString("zh-TW")} 筆），已載入第 1 包供編輯`,
+        );
+      } else if (!alsoDownload) {
+        // 僅下載模式但使用者取消勾選下載——仍強制下載
+        toast.message("已分割（未勾選下載）");
+      }
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "分割失敗");
@@ -294,7 +357,7 @@ export function PartitionToolsDialog({
             </h2>
             <p className="mt-1 text-xs text-muted">
               {mode === "split" &&
-                "將 x 筆明細平均切成 y 個小檔＋索引；多檔會打包成一個 ZIP（或選一次資料夾），不必逐檔另存。"}
+                "將 x 筆切成 y 包；預設在網頁逐包載入編輯（每包 ≤ 可編輯上限），也可另存 ZIP。"}
               {mode === "merge" &&
                 "選擇索引 JSON 與全部 part*.txt，合併回單一 ACH 大檔（可順便轉 R01）。"}
               {mode === "convert" &&
@@ -339,10 +402,39 @@ export function PartitionToolsDialog({
                   disabled={busy}
                 />
                 <span className="block text-[11px] text-muted">
-                  建議{" "}
-                  {suggested.partCount || 1} 檔（約每檔{" "}
-                  {PARTITION_LIMITS.defaultChunkSize.toLocaleString("zh-TW")}{" "}
-                  筆）
+                  建議至少 {suggested.partCount || 1} 包（每包 ≤{" "}
+                  {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")}{" "}
+                  筆才能在網頁編輯）
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={openForEdit}
+                  onChange={(e) => setOpenForEdit(e.target.checked)}
+                  disabled={busy}
+                />
+                <span>
+                  <span className="font-medium text-fg">分割後在網頁編輯</span>
+                  <span className="block text-muted">
+                    開啟分割工作區，逐包載入表單修改，再「合併全部輸出」
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={alsoDownload || !openForEdit}
+                  onChange={(e) => setAlsoDownload(e.target.checked)}
+                  disabled={busy || !openForEdit}
+                />
+                <span>
+                  <span className="font-medium text-fg">同時下載 ZIP／資料夾</span>
+                  <span className="block text-muted">
+                    未勾選「網頁編輯」時會自動下載
+                  </span>
                 </span>
               </label>
             </>
@@ -454,7 +546,7 @@ export function PartitionToolsDialog({
                 處理中…
               </>
             ) : mode === "split" ? (
-              "分割並下載"
+              openForEdit ? "分割並開始編輯" : "分割並下載"
             ) : mode === "merge" ? (
               mergeConvert ? "合併並轉 R01" : "合併下載"
             ) : (

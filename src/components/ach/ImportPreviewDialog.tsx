@@ -258,7 +258,7 @@ export function ImportPreviewDialog({
                 <span>
                   {result.filterActive
                     ? `符合篩選仍有 ${result.matchedCount.toLocaleString("zh-TW")} 筆，超過上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆。請再縮小篩選條件。`
-                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。可「預先篩選」載入部分列，或「分割大檔」／「大檔轉 R01」不經表單處理。`}
+                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。可「預先篩選」，或「分割大檔」後在網頁逐包編輯再合併；亦可「大檔轉 R01」。`}
                 </span>
               </div>
             )}

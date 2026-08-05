@@ -62,6 +62,11 @@ import {
   saveAchFiles,
 } from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
+import {
+  ControlHeaderFields,
+  ControlTrailerFields,
+  proposerFormFields,
+} from "./ControlRecords";
 import { ConvertR01Dialog } from "./ConvertR01Dialog";
 import { ImportPreviewDialog } from "./ImportPreviewDialog";
 import { PartitionToolsDialog } from "./PartitionToolsDialog";
@@ -840,10 +845,33 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           <div>
             <h3 className="mb-1 text-sm font-bold text-fg">控制首錄</h3>
             <p className="mb-2 text-xs text-muted">
-              編輯提出／發動者資料；產生檔時寫入對應欄位。
+              對照財金控制首錄欄位名稱與值（不含長度／起迄）；可編輯處理日期等來源欄。
             </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              {schema.form.header.map((field) => {
+            <ControlHeaderFields
+              schema={schema}
+              header={header}
+              branches={branches}
+              edit={{
+                header,
+                errors: headerErrs,
+                onChange: (key, value) =>
+                  setHeaderT(schema.code, schema, key, value),
+                onBlur: onHeaderBlur,
+                fieldMeta,
+                selectOptions,
+                onPick: (mode, key) =>
+                  setPicker({ mode, target: "header", key }),
+              }}
+            />
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">提出／發動者資料</h3>
+            <p className="mb-2 text-xs text-muted">
+              寫入明細錄與發送單位推算；非控制首錄本身欄位。
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {proposerFormFields(schema).map((field) => {
                 const err = headerErrs[field.key];
                 const meta = fieldMeta(field);
                 return (
@@ -917,30 +945,26 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           <div>
             <h3 className="mb-1 text-sm font-bold text-fg">控制尾錄</h3>
             <p className="mb-2 text-xs text-muted">
-              產生檔時依明細自動計算；以下為目前彙總。
+              對照財金控制尾錄；總筆數／總金額依明細自動計算，前一營業日於提回檔可編輯。
             </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <div className="field-label">總筆數</div>
-                <div className="field-input font-mono bg-surface-2">
-                  {stats.count.toLocaleString("zh-TW")}
-                </div>
-              </div>
-              <div>
-                <div className="field-label">總金額</div>
-                <div className="field-input font-mono bg-surface-2">
-                  {stats.amount.toLocaleString("zh-TW")}
-                </div>
-              </div>
-              {schema.form.header.some((f) => f.key === "ydate") ? (
-                <div>
-                  <div className="field-label">前一營業日（YDATE）</div>
-                  <div className="field-input font-mono bg-surface-2">
-                    {header.ydate?.trim() || "（同上／產生時）"}
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            <ControlTrailerFields
+              schema={schema}
+              header={header}
+              branches={branches}
+              totalCount={stats.count}
+              totalAmount={stats.amount}
+              edit={{
+                header,
+                errors: headerErrs,
+                onChange: (key, value) =>
+                  setHeaderT(schema.code, schema, key, value),
+                onBlur: onHeaderBlur,
+                fieldMeta,
+                selectOptions,
+                onPick: (mode, key) =>
+                  setPicker({ mode, target: "header", key }),
+              }}
+            />
           </div>
         </div>
 

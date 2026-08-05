@@ -436,18 +436,14 @@ function buildResult(
     if (acc.filterActive) {
       pushWarning(
         acc.warnings,
-        `符合篩選 ${matchedCount.toLocaleString("zh-TW")} 筆，仍超過可載入上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請再縮小篩選條件`,
-      );
-    } else {
-      pushWarning(
-        acc.warnings,
-        `明細共 ${acc.detailCount.toLocaleString("zh-TW")} 筆，超過可載入表單上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請先「預先篩選」欄位後再載入符合結果`,
+        `符合篩選 ${matchedCount.toLocaleString("zh-TW")} 筆，仍超過可載入上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請再縮小表頭篩選條件`,
       );
     }
+    // 未篩選之大檔：不在警告區重複提示，改由明細表頭篩選操作
   } else if (acc.filterActive) {
     pushWarning(
       acc.warnings,
-      `已套用預先篩選：符合 ${matchedCount.toLocaleString("zh-TW")}／總計 ${acc.detailCount.toLocaleString("zh-TW")} 筆，可套用到表單`,
+      `已套用篩選：符合 ${matchedCount.toLocaleString("zh-TW")}／總計 ${acc.detailCount.toLocaleString("zh-TW")} 筆，可套用到表單`,
     );
   }
 

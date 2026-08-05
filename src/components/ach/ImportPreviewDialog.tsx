@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -23,20 +23,17 @@ import {
   type ParsedLine,
 } from "@/lib/ach/import";
 import {
-  formatTxTypeLabel,
   lookupBranch,
-  lookupTxid,
 } from "@/lib/ach/engine";
 import {
   emptyDetailFilters,
-  filterableDetailFields,
   hasActiveFilters,
+  isFieldFilterable,
   type DetailFilters,
 } from "@/lib/ach/filter";
 import {
   ControlHeaderFields,
   ControlTrailerFields,
-  proposerFormFields,
 } from "./ControlRecords";
 
 type Props = {
@@ -115,24 +112,6 @@ export function ImportPreviewDialog({
       }
     }
   }, [open, result]);
-
-  const formNotes = useMemo(() => {
-    if (!result || !schema) return {};
-    const notes: Record<string, string> = {};
-    for (const f of schema.form.header) {
-      const v = result.header[f.key] ?? "";
-      if (f.metaFrom === "txid") {
-        const t = lookupTxid(v, txids);
-        notes[f.key] = t ? `${formatTxTypeLabel(t.type)} · ${t.name}` : "";
-      } else if (f.metaFrom === "branch") {
-        notes[f.key] = lookupBranch(v, branches)?.name ?? "";
-      } else if (f.optionsFrom === "authOptions") {
-        notes[f.key] =
-          schema.authOptions?.find((o) => o.value === v)?.note ?? "";
-      }
-    }
-    return notes;
-  }, [result, schema, txids, branches]);
 
   async function handleApply() {
     if (!result || !canApply) return;
@@ -230,7 +209,7 @@ export function ImportPreviewDialog({
               {result.filterActive && (
                 <span className="badge badge-ok gap-1">
                   <Filter className="size-3" />
-                  已預先篩選
+                  已套用篩選
                 </span>
               )}
             </div>
@@ -251,21 +230,10 @@ export function ImportPreviewDialog({
           </button>
         </div>
 
-        {(result.tooLargeForForm ||
-          result.errors.length > 0 ||
+        {(result.errors.length > 0 ||
           result.warnings.length > 0 ||
           result.lengthErrorCount > 0) && (
           <div className="space-y-1.5 border-b border-border bg-surface-2/60 px-4 py-3">
-            {result.tooLargeForForm && (
-              <div className="flex items-start gap-2 text-sm font-semibold text-danger">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  {result.filterActive
-                    ? `符合篩選仍有 ${result.matchedCount.toLocaleString("zh-TW")} 筆，超過上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆。請再縮小篩選條件。`
-                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。可「預先篩選」，或「分割大檔」後在網頁逐包編輯再合併；亦可「大檔轉 R01」。`}
-                </span>
-              </div>
-            )}
             {result.lengthErrorCount > 0 && (
               <div className="flex items-start gap-2 text-sm text-accent">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
@@ -300,22 +268,6 @@ export function ImportPreviewDialog({
           </div>
         )}
 
-        {showPreFilter && (
-          <PreFilterPanel
-            schema={schema}
-            draftFilters={draftFilters}
-            draftGlobal={draftGlobal}
-            disabled={busy}
-            onFiltersChange={setDraftFilters}
-            onGlobalChange={setDraftGlobal}
-            onScan={() => void handleFilterScan()}
-            onClear={() => {
-              setDraftFilters(emptyDetailFilters(schema));
-              setDraftGlobal("");
-            }}
-          />
-        )}
-
         <div className="flex flex-wrap gap-1 border-b border-border px-4 pt-2">
           {(
             [
@@ -346,8 +298,18 @@ export function ImportPreviewDialog({
             <FormPreview
               schema={schema}
               result={result}
-              formNotes={formNotes}
               branches={branches}
+              draftFilters={draftFilters}
+              draftGlobal={draftGlobal}
+              filterEnabled={showPreFilter}
+              filterBusy={busy}
+              onFiltersChange={setDraftFilters}
+              onGlobalChange={setDraftGlobal}
+              onScan={() => void handleFilterScan()}
+              onClearFilters={() => {
+                setDraftFilters(emptyDetailFilters(schema));
+                setDraftGlobal("");
+              }}
             />
           )}
           {tab === "raw" && <RawPreview result={result} schema={schema} />}
@@ -357,8 +319,8 @@ export function ImportPreviewDialog({
           <p className="text-xs text-muted">
             {result.tooLargeForForm
               ? result.filterActive
-                ? "請縮小篩選後再套用"
-                : "請先預先篩選並載入符合結果"
+                ? "符合筆數仍超過上限，請在明細表頭縮小篩選後再套用"
+                : "請在明細表頭輸入篩選條件並套用，或使用分割大檔／大檔轉 R01"
               : result.filterActive
                 ? `將套用篩選後的 ${result.matchedCount.toLocaleString("zh-TW")} 筆到「${schema.code}」表單`
                 : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
@@ -418,99 +380,6 @@ export function ImportPreviewDialog({
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PreFilterPanel({
-  schema,
-  draftFilters,
-  draftGlobal,
-  disabled,
-  onFiltersChange,
-  onGlobalChange,
-  onScan,
-  onClear,
-}: {
-  schema: FormatSchema;
-  draftFilters: DetailFilters;
-  draftGlobal: string;
-  disabled: boolean;
-  onFiltersChange: (f: DetailFilters) => void;
-  onGlobalChange: (g: string) => void;
-  onScan: () => void;
-  onClear: () => void;
-}) {
-  const fields = filterableDetailFields(schema);
-  const ready = hasActiveFilters(draftFilters, { global: draftGlobal });
-
-  return (
-    <div className="border-b border-border bg-primary-soft/20 px-4 py-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Filter className="size-4 text-primary" />
-        <h4 className="text-sm font-bold text-fg">預先篩選欄位</h4>
-        <span className="text-xs text-muted">
-          大檔請先設定條件，再串流載入「符合的全部結果」（上限{" "}
-          {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）
-        </span>
-      </div>
-      <div className="mb-2">
-        <label className="field-label" htmlFor="import-filter-global">
-          全域關鍵字
-        </label>
-        <input
-          id="import-filter-global"
-          className="field-input"
-          placeholder="比對任一明細欄…"
-          value={draftGlobal}
-          disabled={disabled}
-          onChange={(e) => onGlobalChange(e.target.value)}
-        />
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {fields.map((field) => (
-          <div key={field.key}>
-            <label
-              className="field-label"
-              htmlFor={`import-filter-${field.key}`}
-            >
-              {field.label}
-            </label>
-            <input
-              id={`import-filter-${field.key}`}
-              className={`field-input ${field.ui?.mono ? "font-mono" : ""}`}
-              placeholder="包含…"
-              value={draftFilters[field.key] ?? ""}
-              disabled={disabled}
-              onChange={(e) =>
-                onFiltersChange({
-                  ...draftFilters,
-                  [field.key]: e.target.value,
-                })
-              }
-            />
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={disabled || !ready}
-          onClick={onScan}
-        >
-          <Filter className="size-4" />
-          套用篩選並顯示全部結果
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={disabled}
-          onClick={onClear}
-        >
-          清除條件
-        </button>
       </div>
     </div>
   );
@@ -626,13 +495,27 @@ function FieldsPreview({
 function FormPreview({
   schema,
   result,
-  formNotes,
   branches,
+  draftFilters,
+  draftGlobal,
+  filterEnabled,
+  filterBusy,
+  onFiltersChange,
+  onGlobalChange,
+  onScan,
+  onClearFilters,
 }: {
   schema: FormatSchema;
   result: ImportResult;
-  formNotes: Record<string, string>;
   branches: Branch[];
+  draftFilters: DetailFilters;
+  draftGlobal: string;
+  filterEnabled: boolean;
+  filterBusy: boolean;
+  onFiltersChange: (f: DetailFilters) => void;
+  onGlobalChange: (g: string) => void;
+  onScan: () => void;
+  onClearFilters: () => void;
 }) {
   const trailerCount = Number(
     (result.trailer.TCOUNT || String(result.detailCount)).replace(/^0+/, "") ||
@@ -641,7 +524,18 @@ function FormPreview({
   const trailerAmount = Number(
     (result.trailer.TAMT || "0").replace(/^0+/, "") || "0",
   );
-  const proposer = proposerFormFields(schema);
+  const filtersReady = hasActiveFilters(draftFilters, { global: draftGlobal });
+  const filtersDirty =
+    filterEnabled &&
+    (draftGlobal !== (result.filterActive ? result.appliedGlobal : "") ||
+      schema.form.detail.some((f) => {
+        if (!isFieldFilterable(f)) return false;
+        const draft = (draftFilters[f.key] ?? "").trim();
+        const applied = result.filterActive
+          ? (result.appliedFilters[f.key] ?? "").trim()
+          : "";
+        return draft !== applied;
+      }));
 
   return (
     <div className="space-y-4">
@@ -659,64 +553,105 @@ function FormPreview({
         />
       </section>
 
-      {proposer.length > 0 ? (
-        <section className="overflow-hidden rounded-lg border border-border">
-          <div className="border-b border-border px-4 py-3">
-            <h4 className="font-bold">提出／發動者資料</h4>
-            <p className="text-xs text-muted">
-              匯入後可於表單編輯（寫入明細錄）
-            </p>
+      <section className="overflow-hidden rounded-lg border border-border">
+        <div className="border-b border-border px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h4 className="font-bold">
+                {result.filterActive ? "篩選結果（全部符合）" : "明細預覽"}
+              </h4>
+              <p className="text-xs text-muted">
+                {filterEnabled
+                  ? `在表頭輸入條件後套用篩選（載入上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）；亦可分割大檔`
+                  : "匯入後可於表單繼續編輯"}
+              </p>
+            </div>
+            <span className="stat-pill text-xs">
+              {result.filterActive
+                ? `符合 ${result.matchedCount.toLocaleString("zh-TW")}／總計 ${result.detailCount.toLocaleString("zh-TW")} 筆（列出 ${result.previewRows.length}）`
+                : `顯示 ${result.previewRows.length}／${result.detailCount.toLocaleString("zh-TW")} 筆`}
+            </span>
           </div>
-          <div className="scroll-panel border-0 rounded-none">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {proposer.map((f) => (
-                    <th key={f.key}>{f.label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {proposer.map((f) => (
-                    <td key={f.key} className="font-mono">
-                      {result.header[f.key] || "—"}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  {proposer.map((f) => (
-                    <td key={`n-${f.key}`} className="text-xs text-muted">
-                      {formNotes[f.key] || ""}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
 
-      <section>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <h4 className="text-sm font-bold">
-            {result.filterActive ? "篩選結果（全部符合）" : "明細預覽"}
-          </h4>
-          <span className="stat-pill text-xs">
-            {result.filterActive
-              ? `符合 ${result.matchedCount.toLocaleString("zh-TW")}／總計 ${result.detailCount.toLocaleString("zh-TW")} 筆（列出 ${result.previewRows.length}）`
-              : `顯示 ${result.previewRows.length}／${result.detailCount.toLocaleString("zh-TW")} 筆`}
-          </span>
+          {filterEnabled ? (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="relative min-w-[10rem] max-w-sm flex-1">
+                <input
+                  className="field-input h-8 text-sm"
+                  placeholder="全域搜尋（任一欄位包含…）"
+                  value={draftGlobal}
+                  disabled={filterBusy}
+                  onChange={(e) => onGlobalChange(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary h-8 gap-1 px-3 text-xs"
+                disabled={filterBusy || !filtersReady}
+                onClick={onScan}
+              >
+                <Filter className="size-3.5" />
+                {filtersDirty ? "套用篩選" : "套用篩選並載入"}
+              </button>
+              {filtersReady ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost h-8 gap-1 px-2 text-xs"
+                  disabled={filterBusy}
+                  onClick={onClearFilters}
+                >
+                  清除條件
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        <div className="scroll-panel max-h-[40vh] rounded-lg border border-border">
+
+        <div className="scroll-panel max-h-[40vh] border-0 rounded-none">
           <table className="data-table">
             <thead>
               <tr>
-                <th className="w-10">#</th>
-                {schema.form.detail.map((f) => (
-                  <th key={f.key}>{f.label}</th>
-                ))}
-                <th>銀行名稱</th>
+                <th className="w-10">
+                  <span className="th-label">#</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
+                {schema.form.detail.map((f) => {
+                  const canFilter = filterEnabled && isFieldFilterable(f);
+                  const active = Boolean((draftFilters[f.key] ?? "").trim());
+                  return (
+                    <th key={f.key} style={{ minWidth: f.ui?.minWidth }}>
+                      <span className="th-label">{f.label}</span>
+                      {canFilter ? (
+                        <input
+                          className={`th-filter ${active ? "is-active" : ""}`}
+                          aria-label={`篩選 ${f.label}`}
+                          placeholder="篩選…"
+                          value={draftFilters[f.key] ?? ""}
+                          disabled={filterBusy}
+                          onChange={(e) =>
+                            onFiltersChange({
+                              ...draftFilters,
+                              [f.key]: e.target.value,
+                            })
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && filtersReady) onScan();
+                          }}
+                        />
+                      ) : filterEnabled ? (
+                        <span className="block h-[1.7rem]" aria-hidden />
+                      ) : null}
+                    </th>
+                  );
+                })}
+                <th className="min-w-32">
+                  <span className="th-label">銀行名稱</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -726,7 +661,9 @@ function FormPreview({
                     colSpan={schema.form.detail.length + 2}
                     className="py-8 text-center text-muted"
                   >
-                    無明細
+                    {result.tooLargeForForm && !result.filterActive
+                      ? "大檔僅預覽樣本列；請於表頭篩選後套用載入"
+                      : "無明細"}
                   </td>
                 </tr>
               ) : (

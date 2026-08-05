@@ -8,7 +8,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Branch, FormatSchema, Txid } from "@/lib/ach/schema";
-import { saveAchFile, saveAchFiles } from "@/lib/ach/desktop";
+import {
+  describeSaveResult,
+  saveAchFile,
+  saveAchFiles,
+} from "@/lib/ach/desktop";
 import {
   PARTITION_LIMITS,
   convertLargeP01FileToR01,
@@ -96,7 +100,8 @@ export function PartitionToolsDialog({
     setBusy(true);
     setProgress(null);
     try {
-      const parts: { filename: string; content: string }[] = [];
+      const parts: { filename: string; content: string; mime?: string }[] =
+        [];
       const index = await partitionAchFile(
         sourceFile,
         schema,
@@ -110,14 +115,22 @@ export function PartitionToolsDialog({
           },
         },
       );
-      await saveAchFiles(parts);
-      await saveAchFile(
-        partitionIndexFilename(sourceFile.name),
-        stringifyPartitionIndex(index),
-        "application/json;charset=utf-8",
-      );
+      parts.push({
+        filename: partitionIndexFilename(sourceFile.name),
+        content: stringifyPartitionIndex(index),
+        mime: "application/json;charset=utf-8",
+      });
+      const base =
+        sourceFile.name.replace(/\.[^.]+$/, "") || schema.code;
+      const saved = await saveAchFiles(parts, {
+        zipName: `${base}.parts.zip`,
+      });
+      if (saved.method === "canceled") {
+        toast.message("已取消儲存");
+        return;
+      }
       toast.success(
-        `已分割 ${index.partCount} 檔（共 ${index.totalDetailCount.toLocaleString("zh-TW")} 筆）並下載索引`,
+        `已分割 ${index.partCount} 檔（共 ${index.totalDetailCount.toLocaleString("zh-TW")} 筆）· ${describeSaveResult(saved)}`,
       );
       onClose();
     } catch (e) {
@@ -168,14 +181,18 @@ export function PartitionToolsDialog({
             pdate: safeDigits(pdate),
           },
         );
-        await saveAchFiles(
+        const saved = await saveAchFiles(
           result.files.map((f) => ({
             filename: f.filename,
             content: f.content,
           })),
         );
+        if (saved.method === "canceled") {
+          toast.message("已取消儲存");
+          return;
+        }
         toast.success(
-          `已合併轉檔 R01（${result.detailCount.toLocaleString("zh-TW")} 筆，${result.files.length} 檔）`,
+          `已合併轉檔 R01（${result.detailCount.toLocaleString("zh-TW")} 筆）· ${describeSaveResult(saved)}`,
         );
       } else {
         const merged = mergeAchPartitions(
@@ -224,14 +241,18 @@ export function PartitionToolsDialog({
           onProgress: setProgress,
         },
       );
-      await saveAchFiles(
+      const saved = await saveAchFiles(
         result.files.map((f) => ({
           filename: f.filename,
           content: f.content,
         })),
       );
+      if (saved.method === "canceled") {
+        toast.message("已取消儲存");
+        return;
+      }
       toast.success(
-        `已大檔轉 R01（${result.detailCount.toLocaleString("zh-TW")} 筆 → ${result.files.length} 檔）`,
+        `已大檔轉 R01（${result.detailCount.toLocaleString("zh-TW")} 筆）· ${describeSaveResult(saved)}`,
       );
       onClose();
     } catch (e) {
@@ -273,11 +294,11 @@ export function PartitionToolsDialog({
             </h2>
             <p className="mt-1 text-xs text-muted">
               {mode === "split" &&
-                "將 x 筆明細平均切成 y 個小檔，並下載 partition-index.json 供後續合併。"}
+                "將 x 筆明細平均切成 y 個小檔＋索引；多檔會打包成一個 ZIP（或選一次資料夾），不必逐檔另存。"}
               {mode === "merge" &&
                 "選擇索引 JSON 與全部 part*.txt，合併回單一 ACH 大檔（可順便轉 R01）。"}
               {mode === "convert" &&
-                "不經表單：串流分塊轉 ACHR01，再依退件行合併輸出大檔。"}
+                "不經表單：串流分塊轉 ACHR01；多檔結果打包 ZIP 或寫入同一資料夾。"}
             </p>
           </div>
           <button

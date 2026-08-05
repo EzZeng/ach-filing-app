@@ -100,7 +100,8 @@ export function HelpPanel() {
           </li>
           <li>
             大檔（例如數十萬筆）採<strong className="text-fg">串流讀取</strong>
-            ，避免記憶體爆掉；超過可編輯上限時僅提供預覽／列長檢核，請分割檔案後再套用
+            ；超過可編輯上限時可先<strong className="text-fg">預先篩選欄位</strong>
+            ，再載入並顯示符合的全部結果後套用到表單
           </li>
         </ul>
       </div>

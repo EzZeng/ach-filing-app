@@ -106,6 +106,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(
     null,
   );
@@ -316,11 +317,13 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   }
 
   async function handleImportFile(file: File) {
+    setImportFile(file);
     setImportProgress({
       bytesRead: 0,
       totalBytes: file.size,
       linesRead: 0,
       detailCount: 0,
+      matchedCount: 0,
     });
     try {
       const target =
@@ -335,16 +338,59 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         !result.lines.length
       ) {
         toast.error(result.errors[0] ?? "匯入失敗");
+        setImportFile(null);
         return;
       }
       setImportResult(result);
       if (result.tooLargeForForm) {
         toast.message(
-          `已完成串流檢核：${result.detailCount.toLocaleString("zh-TW")} 筆（檔案過大，無法套用編輯）`,
+          `檔案 ${result.detailCount.toLocaleString("zh-TW")} 筆：請先預先篩選欄位後再載入符合結果`,
         );
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "無法讀取檔案");
+      setImportFile(null);
+    } finally {
+      setImportProgress(null);
+    }
+  }
+
+  async function handleImportFilterScan(
+    filters: DetailFilters,
+    global: string,
+  ) {
+    if (!importFile || !importResult) {
+      toast.error("找不到原始上傳檔，請重新上傳");
+      return;
+    }
+    setImportProgress({
+      bytesRead: 0,
+      totalBytes: importFile.size,
+      linesRead: 0,
+      detailCount: 0,
+      matchedCount: 0,
+    });
+    try {
+      const result = await parseAchFile(importFile, importResult.schema, {
+        filename: importFile.name,
+        filters,
+        filterGlobal: global,
+        onProgress: setImportProgress,
+      });
+      setImportResult(result);
+      if (result.tooLargeForForm) {
+        toast.error(
+          `符合 ${result.matchedCount.toLocaleString("zh-TW")} 筆仍超上限，請再縮小條件`,
+        );
+      } else if (result.matchedCount === 0) {
+        toast.message("沒有符合篩選的明細");
+      } else {
+        toast.success(
+          `已載入符合篩選的全部 ${result.matchedCount.toLocaleString("zh-TW")} 筆`,
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "篩選載入失敗");
     } finally {
       setImportProgress(null);
     }
@@ -352,7 +398,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   async function applyImport(result: ImportResult) {
     if (result.tooLargeForForm) {
-      toast.error("檔案過大，無法套用到表單");
+      toast.error("筆數仍超過上限，請先預先篩選");
       return;
     }
     loadFromImport(
@@ -366,14 +412,19 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     if (result.schema.code !== schema.code) {
       onSelectFormat?.(result.schema.code);
     }
-    // 讓 loading mask 至少短暫可見，避免瞬間閃過
     await new Promise<void>((resolve) => {
       window.setTimeout(resolve, 180);
     });
     setImportResult(null);
+    setImportFile(null);
     toast.success(
-      `已匯入 ${result.schema.code}（${result.detailCount} 筆明細），可進行檢核與加工`,
+      `已匯入 ${result.schema.code}（${result.matchedCount.toLocaleString("zh-TW")} 筆明細），可進行檢核與加工`,
     );
+  }
+
+  function closeImportPreview() {
+    setImportResult(null);
+    setImportFile(null);
   }
 
   const selectOptions = (field: FormFieldDef) => {
@@ -397,52 +448,70 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     />
   );
 
-  const importLoadingMask = importProgress ? (
-    <div
-      className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/45 p-4 backdrop-blur-[1px]"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="card flex w-full max-w-sm flex-col items-center gap-3 px-6 py-8 text-center">
-        <Loader2 className="size-9 animate-spin text-primary" />
-        <p className="text-sm font-semibold text-fg">串流讀取檔案中…</p>
-        <p className="text-xs text-muted">
-          已讀{" "}
-          {importProgress.totalBytes > 0
-            ? `${Math.min(
-                100,
-                Math.round(
-                  (importProgress.bytesRead / importProgress.totalBytes) * 100,
-                ),
-              )}%`
-            : "…"}
-          {" · "}
-          明細 {importProgress.detailCount.toLocaleString("zh-TW")} 筆
-          {" · "}
-          列 {importProgress.linesRead.toLocaleString("zh-TW")}
-        </p>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-          <div
-            className="h-full bg-primary transition-[width] duration-150"
-            style={{
-              width: `${
-                importProgress.totalBytes > 0
-                  ? Math.min(
+  // 初次上傳用全畫面 mask；預覽對話框內的篩選重掃改由對話框自家 mask 顯示
+  const importLoadingMask =
+    importProgress && !importResult ? (
+      <div
+        className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/45 p-4 backdrop-blur-[1px]"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="card flex w-full max-w-sm flex-col items-center gap-3 px-6 py-8 text-center">
+          <Loader2 className="size-9 animate-spin text-primary" />
+          <p className="text-sm font-semibold text-fg">串流讀取檔案中…</p>
+          <p className="text-xs text-muted">
+            已讀{" "}
+            {importProgress.totalBytes > 0
+              ? `${Math.min(
+                  100,
+                  Math.round(
+                    (importProgress.bytesRead / importProgress.totalBytes) *
                       100,
-                      (importProgress.bytesRead / importProgress.totalBytes) *
+                  ),
+                )}%`
+              : "…"}
+            {" · "}
+            明細 {importProgress.detailCount.toLocaleString("zh-TW")} 筆
+            {" · "}
+            列 {importProgress.linesRead.toLocaleString("zh-TW")}
+          </p>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+            <div
+              className="h-full bg-primary transition-[width] duration-150"
+              style={{
+                width: `${
+                  importProgress.totalBytes > 0
+                    ? Math.min(
                         100,
-                    )
-                  : 0
-              }%`,
-            }}
-          />
+                        (importProgress.bytesRead / importProgress.totalBytes) *
+                          100,
+                      )
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          <p className="text-[11px] text-faint">
+            大檔採逐列串流，不會一次載入整份到記憶體
+          </p>
         </div>
-        <p className="text-[11px] text-faint">
-          大檔採逐列串流，不會一次載入整份到記憶體
-        </p>
       </div>
-    </div>
-  ) : null;
+    ) : null;
+
+  const importDialog = (
+    <ImportPreviewDialog
+      open={!!importResult}
+      result={importResult}
+      txids={txids}
+      branches={branches}
+      sourceFile={importFile}
+      scanning={!!importProgress && !!importResult}
+      scanProgress={importProgress}
+      onClose={closeImportPreview}
+      onApply={applyImport}
+      onFilterScan={handleImportFilterScan}
+    />
+  );
 
   // —— 預設：引導先上傳既有 P01／P02，隱藏新建表單 ——
   if (!workspaceOpen) {
@@ -544,14 +613,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
         </div>
 
-        <ImportPreviewDialog
-          open={!!importResult}
-          result={importResult}
-          txids={txids}
-          branches={branches}
-          onClose={() => setImportResult(null)}
-          onApply={applyImport}
-        />
+        {importDialog}
       </div>
     );
   }
@@ -1079,14 +1141,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           }
         }}
       />
-      <ImportPreviewDialog
-        open={!!importResult}
-        result={importResult}
-        txids={txids}
-        branches={branches}
-        onClose={() => setImportResult(null)}
-        onApply={applyImport}
-      />
+      {importDialog}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileUp,
+  Filter,
   ListTree,
   Loader2,
   X,
@@ -15,6 +16,7 @@ import type {
 } from "@/lib/ach/schema";
 import {
   IMPORT_LIMITS,
+  type ImportProgress,
   type ImportResult,
   type ParsedLine,
 } from "@/lib/ach/import";
@@ -24,14 +26,29 @@ import {
   lookupTxid,
   resolveSorg,
 } from "@/lib/ach/engine";
+import {
+  emptyDetailFilters,
+  filterableDetailFields,
+  hasActiveFilters,
+  type DetailFilters,
+} from "@/lib/ach/filter";
 
 type Props = {
   open: boolean;
   result: ImportResult | null;
   txids: Txid[];
   branches: Branch[];
+  /** 原始上傳檔（大檔預先篩選需再次串流） */
+  sourceFile?: File | null;
+  scanning?: boolean;
+  scanProgress?: ImportProgress | null;
   onClose: () => void;
   onApply: (result: ImportResult) => void | Promise<void>;
+  /** 依篩選條件重新串流並載入符合列 */
+  onFilterScan?: (
+    filters: DetailFilters,
+    global: string,
+  ) => void | Promise<void>;
 };
 
 type PreviewTab = "fields" | "form" | "raw";
@@ -48,23 +65,44 @@ export function ImportPreviewDialog({
   result,
   txids,
   branches,
+  sourceFile = null,
+  scanning = false,
+  scanProgress = null,
   onClose,
   onApply,
+  onFilterScan,
 }: Props) {
   /** 預設以固定長度欄位（控制首／尾錄）為準 */
   const [tab, setTab] = useState<PreviewTab>("fields");
   const [applying, setApplying] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<DetailFilters>({});
+  const [draftGlobal, setDraftGlobal] = useState("");
 
   const schema = result?.schema;
+  const busy = applying || scanning;
   const canApply =
     !!result &&
     result.errors.length === 0 &&
     !result.tooLargeForForm &&
-    !applying;
+    !busy;
 
   useEffect(() => {
-    if (!open) setApplying(false);
-  }, [open]);
+    if (!open) {
+      setApplying(false);
+      return;
+    }
+    if (result?.schema) {
+      setDraftFilters(
+        result.filterActive
+          ? { ...result.appliedFilters }
+          : emptyDetailFilters(result.schema),
+      );
+      setDraftGlobal(result.filterActive ? result.appliedGlobal : "");
+      if (result.tooLargeForForm || result.filterActive) {
+        setTab("form");
+      }
+    }
+  }, [open, result]);
 
   const formNotes = useMemo(() => {
     if (!result || !schema) return {};
@@ -87,7 +125,6 @@ export function ImportPreviewDialog({
   async function handleApply() {
     if (!result || !canApply) return;
     setApplying(true);
-    // 讓 loading mask 先完成繪製，再執行套用（大量明細時較不易卡住）
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
         window.setTimeout(resolve, 40);
@@ -100,12 +137,22 @@ export function ImportPreviewDialog({
     }
   }
 
+  async function handleFilterScan() {
+    if (!onFilterScan || busy) return;
+    if (!hasActiveFilters(draftFilters, { global: draftGlobal })) {
+      return;
+    }
+    await onFilterScan(draftFilters, draftGlobal);
+  }
+
   function handleClose() {
-    if (applying) return;
+    if (busy) return;
     onClose();
   }
 
   if (!open || !result || !schema) return null;
+
+  const showPreFilter = !!sourceFile && !!onFilterScan;
 
   return (
     <div
@@ -118,19 +165,33 @@ export function ImportPreviewDialog({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-busy={applying}
+        aria-busy={busy}
         aria-label="匯入預覽"
       >
-        {applying && (
+        {busy && (
           <div
             className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-surface/80 backdrop-blur-[1px]"
             role="status"
             aria-live="polite"
           >
             <Loader2 className="size-9 animate-spin text-primary" />
-            <p className="text-sm font-semibold text-fg">套用到表單中…</p>
+            <p className="text-sm font-semibold text-fg">
+              {scanning ? "依篩選條件串流載入中…" : "套用到表單中…"}
+            </p>
             <p className="text-xs text-muted">
-              正在載入 {result.detailCount} 筆明細，請稍候
+              {scanning && scanProgress
+                ? `已讀 ${
+                    scanProgress.totalBytes > 0
+                      ? `${Math.min(
+                          100,
+                          Math.round(
+                            (scanProgress.bytesRead / scanProgress.totalBytes) *
+                              100,
+                          ),
+                        )}%`
+                      : "…"
+                  } · 符合 ${scanProgress.matchedCount.toLocaleString("zh-TW")}／總計 ${scanProgress.detailCount.toLocaleString("zh-TW")}`
+                : `正在載入 ${result.matchedCount.toLocaleString("zh-TW")} 筆明細，請稍候`}
             </p>
           </div>
         )}
@@ -147,10 +208,19 @@ export function ImportPreviewDialog({
               <span className="text-xs text-muted">
                 列長 {schema.recordLength} · 明細{" "}
                 {result.detailCount.toLocaleString("zh-TW")} 筆
+                {result.filterActive
+                  ? ` · 符合 ${result.matchedCount.toLocaleString("zh-TW")}`
+                  : ""}
                 {result.fileSize > 0
                   ? ` · ${(result.fileSize / (1024 * 1024)).toFixed(1)} MB`
                   : ""}
               </span>
+              {result.filterActive && (
+                <span className="badge badge-ok gap-1">
+                  <Filter className="size-3" />
+                  已預先篩選
+                </span>
+              )}
             </div>
             <p className="truncate text-xs text-muted" title={result.filename}>
               {result.filename || "未命名檔案"} · {schema.shortCode}{" "}
@@ -162,7 +232,7 @@ export function ImportPreviewDialog({
             type="button"
             className="btn btn-ghost px-2"
             onClick={handleClose}
-            disabled={applying}
+            disabled={busy}
             aria-label="關閉"
           >
             <X className="size-5" />
@@ -178,10 +248,9 @@ export function ImportPreviewDialog({
               <div className="flex items-start gap-2 text-sm font-semibold text-danger">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                 <span>
-                  檔案過大（
-                  {result.detailCount.toLocaleString("zh-TW")} 筆明細），無法套用到可編輯表單（上限{" "}
-                  {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")}{" "}
-                  筆）。已改為串流預覽／檢核摘要，請分割檔案後再匯入編輯。
+                  {result.filterActive
+                    ? `符合篩選仍有 ${result.matchedCount.toLocaleString("zh-TW")} 筆，超過上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆。請再縮小篩選條件。`
+                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。請先在下方「預先篩選」欄位後再載入符合結果。`}
                 </span>
               </div>
             )}
@@ -219,6 +288,22 @@ export function ImportPreviewDialog({
           </div>
         )}
 
+        {showPreFilter && (
+          <PreFilterPanel
+            schema={schema}
+            draftFilters={draftFilters}
+            draftGlobal={draftGlobal}
+            disabled={busy}
+            onFiltersChange={setDraftFilters}
+            onGlobalChange={setDraftGlobal}
+            onScan={() => void handleFilterScan()}
+            onClear={() => {
+              setDraftFilters(emptyDetailFilters(schema));
+              setDraftGlobal("");
+            }}
+          />
+        )}
+
         <div className="flex flex-wrap gap-1 border-b border-border px-4 pt-2">
           {(
             [
@@ -236,6 +321,7 @@ export function ImportPreviewDialog({
                   : "text-muted hover:text-fg"
               }`}
               onClick={() => setTab(id)}
+              disabled={busy}
             >
               {label}
             </button>
@@ -258,17 +344,21 @@ export function ImportPreviewDialog({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
           <p className="text-xs text-muted">
             {result.tooLargeForForm
-              ? "此檔僅供預覽／檢核摘要，無法套用到表單"
-              : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
+              ? result.filterActive
+                ? "請縮小篩選後再套用"
+                : "請先預先篩選並載入符合結果"
+              : result.filterActive
+                ? `將套用篩選後的 ${result.matchedCount.toLocaleString("zh-TW")} 筆到「${schema.code}」表單`
+                : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className="btn btn-secondary"
               onClick={handleClose}
-              disabled={applying}
+              disabled={busy}
             >
-              {result.tooLargeForForm ? "關閉" : "取消"}
+              {result.tooLargeForForm && !result.filterActive ? "關閉" : "取消"}
             </button>
             <button
               type="button"
@@ -290,6 +380,99 @@ export function ImportPreviewDialog({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PreFilterPanel({
+  schema,
+  draftFilters,
+  draftGlobal,
+  disabled,
+  onFiltersChange,
+  onGlobalChange,
+  onScan,
+  onClear,
+}: {
+  schema: FormatSchema;
+  draftFilters: DetailFilters;
+  draftGlobal: string;
+  disabled: boolean;
+  onFiltersChange: (f: DetailFilters) => void;
+  onGlobalChange: (g: string) => void;
+  onScan: () => void;
+  onClear: () => void;
+}) {
+  const fields = filterableDetailFields(schema);
+  const ready = hasActiveFilters(draftFilters, { global: draftGlobal });
+
+  return (
+    <div className="border-b border-border bg-primary-soft/20 px-4 py-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Filter className="size-4 text-primary" />
+        <h4 className="text-sm font-bold text-fg">預先篩選欄位</h4>
+        <span className="text-xs text-muted">
+          大檔請先設定條件，再串流載入「符合的全部結果」（上限{" "}
+          {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）
+        </span>
+      </div>
+      <div className="mb-2">
+        <label className="field-label" htmlFor="import-filter-global">
+          全域關鍵字
+        </label>
+        <input
+          id="import-filter-global"
+          className="field-input"
+          placeholder="比對任一明細欄…"
+          value={draftGlobal}
+          disabled={disabled}
+          onChange={(e) => onGlobalChange(e.target.value)}
+        />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label
+              className="field-label"
+              htmlFor={`import-filter-${field.key}`}
+            >
+              {field.label}
+            </label>
+            <input
+              id={`import-filter-${field.key}`}
+              className={`field-input ${field.ui?.mono ? "font-mono" : ""}`}
+              placeholder="包含…"
+              value={draftFilters[field.key] ?? ""}
+              disabled={disabled}
+              onChange={(e) =>
+                onFiltersChange({
+                  ...draftFilters,
+                  [field.key]: e.target.value,
+                })
+              }
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={disabled || !ready}
+          onClick={onScan}
+        >
+          <Filter className="size-4" />
+          套用篩選並顯示全部結果
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={disabled}
+          onClick={onClear}
+        >
+          清除條件
+        </button>
       </div>
     </div>
   );
@@ -462,10 +645,13 @@ function FormPreview({
 
       <section>
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <h4 className="text-sm font-bold">明細預覽</h4>
+          <h4 className="text-sm font-bold">
+            {result.filterActive ? "篩選結果（全部符合）" : "明細預覽"}
+          </h4>
           <span className="stat-pill text-xs">
-            顯示 {result.previewRows.length}／
-            {result.detailCount.toLocaleString("zh-TW")} 筆
+            {result.filterActive
+              ? `符合 ${result.matchedCount.toLocaleString("zh-TW")}／總計 ${result.detailCount.toLocaleString("zh-TW")} 筆（列出 ${result.previewRows.length}）`
+              : `顯示 ${result.previewRows.length}／${result.detailCount.toLocaleString("zh-TW")} 筆`}
           </span>
         </div>
         <div className="scroll-panel max-h-[40vh] rounded-lg border border-border">

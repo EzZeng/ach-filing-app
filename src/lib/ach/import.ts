@@ -6,12 +6,18 @@ import type {
 } from "./schema";
 import { emptyDetailRow, emptyHeader } from "./engine";
 import { newRowId } from "./utils";
+import {
+  emptyDetailFilters,
+  hasActiveFilters,
+  rowMatchesFilters,
+  type DetailFilters,
+} from "./filter";
 
 /** 匯入記憶體／表單上限（超過則僅預覽＋檢核摘要，不載入可編輯表單） */
 export const IMPORT_LIMITS = {
   /** 可套用到表單的最大明細筆數 */
   maxFormDetailRows: 5_000,
-  /** 預覽列（對話框明細表） */
+  /** 未篩選時預覽列數 */
   maxPreviewDetailRows: 50,
   /** 固定長度欄位預覽：明細樣本數 */
   maxDetailLineSamples: 2,
@@ -20,6 +26,17 @@ export const IMPORT_LIMITS = {
   /** 進度回報最小間隔 ms */
   progressIntervalMs: 80,
 } as const;
+
+export type ImportParseOptions = {
+  filename?: string;
+  fileSize?: number;
+  /** 明細欄位預先篩選（大檔：先篩再載入符合列） */
+  filters?: DetailFilters;
+  /** 全域關鍵字（任一可篩選欄位） */
+  filterGlobal?: string;
+  onProgress?: (p: ImportProgress) => void;
+  signal?: AbortSignal;
+};
 
 export type ParsedRecordField = {
   id: string;
@@ -44,6 +61,7 @@ export type ImportProgress = {
   totalBytes: number;
   linesRead: number;
   detailCount: number;
+  matchedCount: number;
 };
 
 export type ImportResult = {
@@ -53,19 +71,31 @@ export type ImportResult = {
   header: HeaderValues;
   /**
    * 可套用到表單的完整明細。檔案過大（tooLargeForForm）時為空陣列。
+   * 有預先篩選時為「符合篩選」的全部列（未超上限時）。
    */
   rows: DetailRow[];
-  /** 預覽用明細（最多 maxPreviewDetailRows） */
+  /**
+   * 預覽用明細。
+   * 未篩選：最多 maxPreviewDetailRows。
+   * 已篩選：符合條件的全部列（最多 maxFormDetailRows，供確認後套用）。
+   */
   previewRows: DetailRow[];
   /** 固定長度預覽用列（首錄＋少量明細＋尾錄） */
   lines: ParsedLine[];
   trailer: Record<string, string>;
   warnings: string[];
   errors: string[];
+  /** 檔案內明細總筆數 */
   detailCount: number;
+  /** 符合篩選的筆數（未篩選時等於 detailCount） */
+  matchedCount: number;
   lengthErrorCount: number;
   /** 超過可編輯上限，不可套用到表單 */
   tooLargeForForm: boolean;
+  /** 是否已套用預先篩選 */
+  filterActive: boolean;
+  appliedFilters: DetailFilters;
+  appliedGlobal: string;
   fileSize: number;
 };
 
@@ -205,13 +235,23 @@ type ParseAcc = {
   previewRows: DetailRow[];
   rows: DetailRow[];
   detailCount: number;
+  matchedCount: number;
   lengthErrorCount: number;
   tooLargeForForm: boolean;
   collectingRows: boolean;
   sawNonEmpty: boolean;
+  filterActive: boolean;
+  filters: DetailFilters;
+  filterGlobal: string;
 };
 
-function createAcc(schema: FormatSchema): ParseAcc {
+function createAcc(
+  schema: FormatSchema,
+  opts?: { filters?: DetailFilters; filterGlobal?: string },
+): ParseAcc {
+  const filters = opts?.filters ?? emptyDetailFilters(schema);
+  const filterGlobal = opts?.filterGlobal ?? "";
+  const filterActive = hasActiveFilters(filters, { global: filterGlobal });
   return {
     schema,
     warnings: [],
@@ -222,29 +262,49 @@ function createAcc(schema: FormatSchema): ParseAcc {
     previewRows: [],
     rows: [],
     detailCount: 0,
+    matchedCount: 0,
     lengthErrorCount: 0,
     tooLargeForForm: false,
     collectingRows: true,
     sawNonEmpty: false,
+    filterActive,
+    filters,
+    filterGlobal,
   };
 }
 
+function collectMatchedRow(acc: ParseAcc, row: DetailRow): void {
+  acc.matchedCount += 1;
+
+  // 篩選模式：預覽列出全部符合列（上限內）；未篩選：僅前 N 筆樣本
+  const previewCap = acc.filterActive
+    ? IMPORT_LIMITS.maxFormDetailRows
+    : IMPORT_LIMITS.maxPreviewDetailRows;
+  if (acc.previewRows.length < previewCap) {
+    acc.previewRows.push(row);
+  }
+
+  if (!acc.collectingRows) return;
+
+  if (acc.matchedCount <= IMPORT_LIMITS.maxFormDetailRows) {
+    acc.rows.push(row);
+  } else {
+    acc.tooLargeForForm = true;
+    acc.collectingRows = false;
+    acc.rows = [];
+  }
+}
+
 /**
- * 串流／逐行處理一列。pendingTrailer：可能是尾錄的「最後一筆非空列」暫存。
+ * 串流／逐行處理一列。
  */
 function consumeLine(acc: ParseAcc, raw: string, index: number): void {
   if (!raw && !acc.sawNonEmpty) return;
   if (raw) acc.sawNonEmpty = true;
 
-  const startsBof = raw.startsWith("BOF");
-  const startsEof = raw.startsWith("EOF");
-
-  // 若已有暫存的「疑似尾錄前一筆」，先以明細消化（真正尾錄會覆寫 trailerLine）
-  // 此函式由驅動端以 peek 方式處理 EOF；此處依列首標記分類。
-
   let kind: ParsedLine["kind"];
-  if (startsBof) kind = "header";
-  else if (startsEof) kind = "trailer";
+  if (raw.startsWith("BOF")) kind = "header";
+  else if (raw.startsWith("EOF")) kind = "trailer";
   else if (raw.trim()) kind = "detail";
   else kind = "unknown";
 
@@ -259,78 +319,76 @@ function consumeLine(acc: ParseAcc, raw: string, index: number): void {
     );
   }
 
-  const needFields =
-    kind === "header" ||
-    kind === "trailer" ||
-    (kind === "detail" &&
-      (acc.previewRows.length < IMPORT_LIMITS.maxPreviewDetailRows ||
-        (acc.collectingRows &&
-          acc.rows.length < IMPORT_LIMITS.maxFormDetailRows) ||
-        acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples));
-
   const section =
     kind === "header" || kind === "detail" || kind === "trailer"
       ? acc.schema.records[kind].fields
       : null;
-  const fields =
-    needFields && section ? parseRecordFields(raw, section) : [];
 
-  const sample: ParsedLine | null =
-    kind === "header" ||
-    kind === "trailer" ||
-    (kind === "detail" &&
-      acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples)
-      ? {
-          index,
-          kind,
-          raw,
-          length: raw.length,
-          lengthOk,
-          fields:
-            fields.length > 0
-              ? fields
-              : section
-                ? parseRecordFields(raw, section)
-                : [],
-        }
-      : null;
-
-  if (kind === "header") {
-    acc.headerLine = sample;
-    return;
-  }
-
-  if (kind === "trailer") {
-    acc.trailerLine = sample;
+  if (kind === "header" || kind === "trailer") {
+    const fields = section ? parseRecordFields(raw, section) : [];
+    const sample: ParsedLine = {
+      index,
+      kind,
+      raw,
+      length: raw.length,
+      lengthOk,
+      fields,
+    };
+    if (kind === "header") acc.headerLine = sample;
+    else acc.trailerLine = sample;
     return;
   }
 
   // detail
   acc.detailCount += 1;
-  if (sample) acc.detailSamples.push(sample);
 
-  if (acc.previewRows.length < IMPORT_LIMITS.maxPreviewDetailRows) {
-    const f =
-      fields.length > 0
-        ? fields
-        : parseRecordFields(raw, acc.schema.records.detail.fields);
-    acc.previewRows.push(detailRowFromFields(acc.schema, f));
-  }
+  const needParse =
+    acc.filterActive ||
+    acc.previewRows.length < IMPORT_LIMITS.maxPreviewDetailRows ||
+    (acc.collectingRows &&
+      acc.matchedCount < IMPORT_LIMITS.maxFormDetailRows) ||
+    acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples;
 
-  if (acc.collectingRows) {
-    if (acc.detailCount <= IMPORT_LIMITS.maxFormDetailRows) {
-      const f =
-        fields.length > 0
-          ? fields
-          : parseRecordFields(raw, acc.schema.records.detail.fields);
-      acc.rows.push(detailRowFromFields(acc.schema, f));
-    } else {
-      // 超過可編輯上限：丟棄已收集列以釋放記憶體，僅保留預覽
+  if (!needParse) {
+    // 未篩選且已超過收集上限：只計數／列長，並丟掉已物化的 rows
+    if (
+      !acc.filterActive &&
+      acc.detailCount > IMPORT_LIMITS.maxFormDetailRows
+    ) {
       acc.tooLargeForForm = true;
       acc.collectingRows = false;
       acc.rows = [];
     }
+    return;
   }
+
+  const fields = section ? parseRecordFields(raw, section) : [];
+  if (acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples) {
+    acc.detailSamples.push({
+      index,
+      kind: "detail",
+      raw,
+      length: raw.length,
+      lengthOk,
+      fields,
+    });
+  }
+
+  const row = detailRowFromFields(acc.schema, fields);
+
+  if (acc.filterActive) {
+    if (
+      !rowMatchesFilters(row, {
+        schema: acc.schema,
+        filters: acc.filters,
+        options: { global: acc.filterGlobal },
+      })
+    ) {
+      return;
+    }
+  }
+
+  collectMatchedRow(acc, row);
 }
 
 function finalizeHeader(acc: ParseAcc): HeaderValues {
@@ -371,12 +429,28 @@ function buildResult(
   if (!acc.detailCount) {
     pushWarning(acc.warnings, "沒有明細列");
   }
+
+  const matchedCount = acc.filterActive ? acc.matchedCount : acc.detailCount;
+
   if (acc.tooLargeForForm) {
+    if (acc.filterActive) {
+      pushWarning(
+        acc.warnings,
+        `符合篩選 ${matchedCount.toLocaleString("zh-TW")} 筆，仍超過可載入上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請再縮小篩選條件`,
+      );
+    } else {
+      pushWarning(
+        acc.warnings,
+        `明細共 ${acc.detailCount.toLocaleString("zh-TW")} 筆，超過可載入表單上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請先「預先篩選」欄位後再載入符合結果`,
+      );
+    }
+  } else if (acc.filterActive) {
     pushWarning(
       acc.warnings,
-      `明細共 ${acc.detailCount.toLocaleString("zh-TW")} 筆，超過可載入表單上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；僅提供預覽與檢核摘要，請分割檔案後再套用編輯`,
+      `已套用預先篩選：符合 ${matchedCount.toLocaleString("zh-TW")}／總計 ${acc.detailCount.toLocaleString("zh-TW")} 筆，可套用到表單`,
     );
   }
+
   if (acc.lengthErrorCount > IMPORT_LIMITS.maxWarningSamples) {
     pushWarning(
       acc.warnings,
@@ -405,8 +479,12 @@ function buildResult(
     warnings: acc.warnings,
     errors: acc.errors,
     detailCount: acc.detailCount,
+    matchedCount,
     lengthErrorCount: acc.lengthErrorCount,
     tooLargeForForm: acc.tooLargeForForm,
+    filterActive: acc.filterActive,
+    appliedFilters: { ...acc.filters },
+    appliedGlobal: acc.filterGlobal,
     fileSize: opts.fileSize,
   };
 }
@@ -417,12 +495,15 @@ function buildResult(
 export function parseAchText(
   text: string,
   schema: FormatSchema,
-  opts?: { filename?: string; fileSize?: number },
+  opts?: ImportParseOptions,
 ): ImportResult {
   const filename = opts?.filename ?? "";
   const fileSize = opts?.fileSize ?? text.length;
   const detectedCode = detectFormatCode(text);
-  const acc = createAcc(schema);
+  const acc = createAcc(schema, {
+    filters: opts?.filters,
+    filterGlobal: opts?.filterGlobal,
+  });
 
   if (detectedCode && detectedCode !== schema.code) {
     pushWarning(
@@ -448,19 +529,19 @@ export function parseAchText(
 
 /**
  * 串流解析 File，避免 file.text() 將整檔載入記憶體造成 OOM。
+ * 可帶 filters／filterGlobal：大檔先篩選再收集符合列。
  */
 export async function parseAchFile(
   file: File,
   schema: FormatSchema,
-  opts?: {
-    filename?: string;
-    onProgress?: (p: ImportProgress) => void;
-    signal?: AbortSignal;
-  },
+  opts?: ImportParseOptions,
 ): Promise<ImportResult> {
   const filename = opts?.filename ?? file.name;
   const detectedCode = await detectFormatCodeFromFile(file);
-  const acc = createAcc(schema);
+  const acc = createAcc(schema, {
+    filters: opts?.filters,
+    filterGlobal: opts?.filterGlobal,
+  });
 
   if (detectedCode && detectedCode !== schema.code) {
     pushWarning(
@@ -492,6 +573,7 @@ export async function parseAchFile(
       totalBytes: file.size,
       linesRead: lineIndex,
       detailCount: acc.detailCount,
+      matchedCount: acc.filterActive ? acc.matchedCount : acc.detailCount,
     });
   };
 

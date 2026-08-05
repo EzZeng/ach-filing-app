@@ -33,6 +33,13 @@ assert.deepEqual(planPartitionSizes(10, 3), [4, 3, 3]);
 assert.deepEqual(planPartitionSizes(5, 10), [1, 1, 1, 1, 1]);
 const plan = planPartitions(12_000, { chunkSize: 5_000 });
 assert.equal(plan.partCount, 3);
+// 檔數無上限：可超過舊的 40 包限制
+const many = planPartitions(200_000, { chunkSize: 5_000 });
+assert.equal(many.partCount, 40);
+const more = planPartitions(250_000, { chunkSize: 5_000 });
+assert.equal(more.partCount, 50);
+const byCount = planPartitions(1000, { partCount: 100 });
+assert.equal(byCount.partCount, 100);
 
 const header: HeaderValues = {
   date: "01150804",

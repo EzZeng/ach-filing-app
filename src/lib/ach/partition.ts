@@ -28,8 +28,6 @@ import type {
 import { newRowId, safeDigits } from "./utils";
 
 export const PARTITION_LIMITS = {
-  /** 單次分割最多檔案數（瀏覽器連下載限制） */
-  maxPartCount: 40,
   /** 未指定時預設每包筆數（對齊可編輯表單上限） */
   defaultChunkSize: IMPORT_LIMITS.maxFormDetailRows,
   /** 大檔轉檔時記憶體中暫存的明細列上限 */
@@ -91,18 +89,14 @@ export type PartitionProgress = ImportProgress & {
   partCount: number;
 };
 
-/** 平均分配 x 筆到 y 檔（前 rem 檔多 1 筆） */
+/** 平均分配 x 筆到 y 檔（前 rem 檔多 1 筆）；y 無上限（至多 x，每檔至少 1 筆） */
 export function planPartitionSizes(
   totalDetailCount: number,
   partCount: number,
 ): number[] {
   const x = Math.max(0, Math.floor(totalDetailCount));
   if (x === 0) return [];
-  const y = Math.min(
-    Math.max(1, Math.floor(partCount)),
-    x,
-    PARTITION_LIMITS.maxPartCount,
-  );
+  const y = Math.min(Math.max(1, Math.floor(partCount)), x);
   const base = Math.floor(x / y);
   const rem = x % y;
   return Array.from({ length: y }, (_, i) => base + (i < rem ? 1 : 0));
@@ -110,7 +104,7 @@ export function planPartitionSizes(
 
 /**
  * 規劃「可在網頁表單編輯」的分割：每包 ≤ maxFormDetailRows。
- * 若指定的 y 太小會自動加大。
+ * 若指定的 y 太小會自動加大；檔數無上限。
  */
 export function planPartitionsForEdit(
   totalDetailCount: number,
@@ -118,15 +112,7 @@ export function planPartitionsForEdit(
 ): PartitionPlan & { autoRaised: boolean; minPartCount: number } {
   const x = Math.max(0, Math.floor(totalDetailCount));
   const maxPer = IMPORT_LIMITS.maxFormDetailRows;
-  const minPartCount = Math.min(
-    Math.max(1, Math.ceil(x / maxPer) || 1),
-    PARTITION_LIMITS.maxPartCount,
-  );
-  if (x > 0 && Math.ceil(x / PARTITION_LIMITS.maxPartCount) > maxPer) {
-    throw new Error(
-      `共 ${x.toLocaleString("zh-TW")} 筆，即使拆成 ${PARTITION_LIMITS.maxPartCount} 包，每包仍超過可編輯上限 ${maxPer.toLocaleString("zh-TW")} 筆`,
-    );
-  }
+  const minPartCount = Math.max(1, Math.ceil(x / maxPer) || 1);
   let partCount = preferredPartCount ?? minPartCount;
   const autoRaised = partCount < minPartCount;
   partCount = Math.max(partCount, minPartCount);
@@ -134,7 +120,7 @@ export function planPartitionsForEdit(
   return { ...plan, autoRaised, minPartCount };
 }
 
-/** 由筆數與「要幾個檔」或「每檔幾筆」規劃分割 */
+/** 由筆數與「要幾個檔」或「每檔幾筆」規劃分割（檔數無上限） */
 export function planPartitions(
   totalDetailCount: number,
   opts: { partCount?: number; chunkSize?: number },
@@ -148,21 +134,14 @@ export function planPartitions(
   let chunkSize: number;
 
   if (opts.partCount != null && opts.partCount > 0) {
-    partCount = Math.min(
-      Math.max(1, Math.floor(opts.partCount)),
-      x,
-      PARTITION_LIMITS.maxPartCount,
-    );
+    partCount = Math.min(Math.max(1, Math.floor(opts.partCount)), x);
     chunkSize = Math.ceil(x / partCount);
   } else {
     chunkSize = Math.max(
       1,
       Math.floor(opts.chunkSize ?? PARTITION_LIMITS.defaultChunkSize),
     );
-    partCount = Math.min(Math.ceil(x / chunkSize), PARTITION_LIMITS.maxPartCount);
-    if (partCount === PARTITION_LIMITS.maxPartCount) {
-      chunkSize = Math.ceil(x / partCount);
-    }
+    partCount = Math.ceil(x / chunkSize);
   }
 
   const sizes = planPartitionSizes(x, partCount);

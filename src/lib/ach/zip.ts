@@ -63,6 +63,12 @@ export type ZipEntry = {
 
 /** 建立 ZIP（無壓縮 store），回傳可直接下載的 Blob */
 export function createZipBlob(entries: ZipEntry[]): Blob {
+  // 傳統 ZIP EOCD 筆數欄為 16-bit；超過需 ZIP64（本工具未實作）
+  if (entries.length > 65535) {
+    throw new Error(
+      `ZIP 單檔最多 65535 個項目（目前 ${entries.length}）；請改選資料夾寫入或減少分割數`,
+    );
+  }
   const localParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];
   let offset = 0;

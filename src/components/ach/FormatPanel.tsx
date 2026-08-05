@@ -16,7 +16,9 @@ import {
   Upload,
   ArrowRight,
   ArrowRightLeft,
+  Combine,
   Loader2,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
@@ -62,6 +64,7 @@ import {
   ControlTrailerPreview,
   ImportPreviewDialog,
 } from "./ImportPreviewDialog";
+import { PartitionToolsDialog } from "./PartitionToolsDialog";
 
 type Props = {
   schema: FormatSchema;
@@ -116,6 +119,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   const [dragOver, setDragOver] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [partitionTools, setPartitionTools] = useState<{
+    mode: "split" | "merge" | "convert";
+  } | null>(null);
 
   const workspaceOpen = isWorkspaceOpen(schema.code);
   const workspace = getWorkspace(schema.code);
@@ -560,6 +566,25 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       onClose={closeImportPreview}
       onApply={applyImport}
       onFilterScan={handleImportFilterScan}
+      onPartition={() => setPartitionTools({ mode: "split" })}
+      onLargeConvertR01={() => setPartitionTools({ mode: "convert" })}
+    />
+  );
+
+  const partitionDialog = (
+    <PartitionToolsDialog
+      open={!!partitionTools}
+      mode={partitionTools?.mode ?? "merge"}
+      schema={schema}
+      formats={formats}
+      txids={txids}
+      branches={branches}
+      sourceFile={importFile}
+      detailCount={importResult?.detailCount ?? stats.count}
+      tdate={
+        String(importResult?.header.date ?? header.date ?? "")
+      }
+      onClose={() => setPartitionTools(null)}
     />
   );
 
@@ -678,6 +703,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         </div>
 
         {importDialog}
+        {partitionDialog}
       </div>
     );
   }
@@ -897,6 +923,25 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
               >
                 <ArrowRightLeft className="size-4" />
                 轉檔 R01
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPartitionTools({ mode: "merge" })}
+              title="依 partition-index.json 合併分割檔"
+            >
+              <Combine className="size-4" />
+              合併分割檔
+            </button>
+            {importFile ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setPartitionTools({ mode: "split" })}
+              >
+                <Scissors className="size-4" />
+                分割來源檔
               </button>
             ) : null}
             {exportFormats.map((fmt) => {
@@ -1220,6 +1265,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       />
       {importDialog}
       {convertDialog}
+      {partitionDialog}
     </div>
   );
 }

@@ -61,6 +61,11 @@ export type ConvertP01ToR01Options = {
   ydate?: string;
   /** 原提示交易日期 PDATE（8 碼）。未指定時使用提出檔處理日期。 */
   pdate?: string;
+  /**
+   * 原提示序號起算偏移（分塊轉檔用）。
+   * 實際 PSEQ = seqOffset + 塊內序號（塊內自 1 起）。
+   */
+  seqOffset?: number;
 };
 
 export type ConvertedR01File = {
@@ -139,6 +144,8 @@ export function convertP01ToR01(
     throw new Error("沒有明細列可轉檔");
   }
 
+  const seqOffset = Math.max(0, Math.floor(options.seqOffset ?? 0));
+
   // 依原提回行（收受行）分組＝退件行
   const groups = new Map<string, Array<{ row: DetailRow; origSeq: number }>>();
   let seq = 0;
@@ -146,10 +153,10 @@ export function convertP01ToR01(
     seq += 1;
     const returnBank = safeDigits(String(row.bankCode ?? ""));
     if (returnBank.length !== 7) {
-      throw new Error(`第 ${seq} 筆收受者銀行代號須為 7 碼`);
+      throw new Error(`第 ${seqOffset + seq} 筆收受者銀行代號須為 7 碼`);
     }
     const list = groups.get(returnBank) ?? [];
-    list.push({ row, origSeq: seq });
+    list.push({ row, origSeq: seqOffset + seq });
     groups.set(returnBank, list);
   }
 

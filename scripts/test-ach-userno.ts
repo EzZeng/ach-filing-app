@@ -111,4 +111,42 @@ function trailer(): string {
   console.log("OK File stream parse userNo");
 }
 
+{
+  // 僅 \\r 換行
+  const line = detailLine("CRONLYUSER001");
+  const body = [hdr, line, trailer()].join("\r") + "\r";
+  const file = new File([new TextEncoder().encode(body)], "cr-only.txt");
+  const r = await parseAchFile(file, schema, { filename: "cr-only.txt" });
+  assert.equal(r.detailCount, 1);
+  assert.equal(r.previewRows[0]?.userNo, "CRONLYUSER001");
+  console.log("OK CR-only line endings keep userNo");
+}
+
+{
+  // 無換行：250×3 黏貼
+  const line = detailLine("NOLINEUSER002");
+  const body = hdr + line + trailer();
+  assert.equal(body.length, 750);
+  const r = parseAchText(body, schema, { filename: "no-nl.txt" });
+  assert.equal(r.detailCount, 1);
+  assert.equal(r.previewRows[0]?.userNo, "NOLINEUSER002");
+  const file = new File([new TextEncoder().encode(body)], "no-nl.bin");
+  const r2 = await parseAchFile(file, schema, { filename: "no-nl.bin" });
+  assert.equal(r2.previewRows[0]?.userNo, "NOLINEUSER002");
+  console.log("OK no-newline fixed blocks keep userNo");
+}
+
+{
+  // CNO 含 null 仍應讀到可見字元
+  const base = detailLine("NULLPADUSER003");
+  const line =
+    base.slice(0, 116) +
+    "NULLPADUSER003\u0000\u0000\u0000\u0000\u0000\u0000" +
+    base.slice(136);
+  assert.equal(line.length, 250);
+  const r = parseAchText([hdr, line, trailer()].join("\n"), schema);
+  assert.equal(r.previewRows[0]?.userNo, "NULLPADUSER003");
+  console.log("OK null-padded CNO");
+}
+
 console.log("ACH userNo import tests passed");

@@ -23,6 +23,7 @@ import {
   type ParsedLine,
 } from "@/lib/ach/import";
 import {
+  formatTxTypeLabel,
   lookupBranch,
 } from "@/lib/ach/engine";
 import {
@@ -553,7 +554,7 @@ function FormPreview({
         />
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-border">
+      <section className="rounded-lg border border-border">
         <div className="border-b border-border px-4 py-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -617,12 +618,38 @@ function FormPreview({
                     <span className="block h-[1.7rem]" aria-hidden />
                   ) : null}
                 </th>
+                <th style={{ minWidth: "5.5rem" }}>
+                  <span className="th-label">交易序號</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
+                <th style={{ minWidth: "4.5rem" }}>
+                  <span className="th-label">交易類別</span>
+                  {filterEnabled ? (
+                    <span className="block h-[1.7rem]" aria-hidden />
+                  ) : null}
+                </th>
                 {schema.form.detail.map((f) => {
                   const canFilter = filterEnabled && isFieldFilterable(f);
                   const active = Boolean((draftFilters[f.key] ?? "").trim());
+                  const shortLabel =
+                    schema.records.detail.fields.find(
+                      (rf) => rf.key === f.key && rf.source === "detail",
+                    )?.label || f.label;
                   return (
-                    <th key={f.key} style={{ minWidth: f.ui?.minWidth }}>
-                      <span className="th-label">{f.label}</span>
+                    <th
+                      key={f.key}
+                      style={{
+                        minWidth:
+                          f.key === "userNo"
+                            ? "8rem"
+                            : (f.ui?.minWidth ?? "7.5rem"),
+                      }}
+                    >
+                      <span className="th-label" title={f.label}>
+                        {shortLabel}
+                      </span>
                       {canFilter ? (
                         <input
                           className={`th-filter ${active ? "is-active" : ""}`}
@@ -658,7 +685,7 @@ function FormPreview({
               {result.previewRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={schema.form.detail.length + 2}
+                    colSpan={schema.form.detail.length + 4}
                     className="py-8 text-center text-muted"
                   >
                     {result.tooLargeForForm && !result.filterActive
@@ -670,6 +697,12 @@ function FormPreview({
                 result.previewRows.map((row, i) => (
                   <tr key={row.id}>
                     <td className="text-center text-faint">{i + 1}</td>
+                    <td className="font-mono">{row.seq || ""}</td>
+                    <td className="font-mono">
+                      {row.txType
+                        ? formatTxTypeLabel(row.txType as "SD" | "SC")
+                        : ""}
+                    </td>
                     {schema.form.detail.map((f) => (
                       <td
                         key={f.key}

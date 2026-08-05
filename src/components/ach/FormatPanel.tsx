@@ -1052,7 +1052,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         />
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card">
         <div className="border-b border-border px-4 py-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>

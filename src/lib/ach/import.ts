@@ -200,6 +200,13 @@ function detailRowFromFields(
   for (const f of schema.form.detail) {
     row[f.key] = values[f.key] ?? "";
   }
+  // 預覽用：附帶非表單編輯、但檢視時常需要的欄位
+  for (const f of fields) {
+    if (f.id === "SEQ" && f.value) row.seq = f.value;
+    if (f.id === "TXTYPE" && f.value) row.txType = f.value;
+    if (f.id === "TYPE" && f.value) row.type = f.value;
+    if (f.id === "TXID" && f.value) row.txid = f.value;
+  }
   return row;
 }
 

@@ -80,8 +80,8 @@ export function ImportPreviewDialog({
   onPartition,
   onLargeConvertR01,
 }: Props) {
-  /** 預設以固定長度欄位（控制首／尾錄）為準 */
-  const [tab, setTab] = useState<PreviewTab>("fields");
+  /** 預設以表單欄位（可編輯對應）為準 */
+  const [tab, setTab] = useState<PreviewTab>("form");
   const [applying, setApplying] = useState(false);
   const [draftFilters, setDraftFilters] = useState<DetailFilters>({});
   const [draftGlobal, setDraftGlobal] = useState("");
@@ -588,42 +588,33 @@ function FieldsPreview({
   result: ImportResult;
   schema: FormatSchema;
 }) {
-  const headerLine = result.lines.find((l) => l.kind === "header");
-  const trailerLine = result.lines.find((l) => l.kind === "trailer");
   const detailLines = result.lines.filter((l) => l.kind === "detail");
   const detailSamples = detailLines.slice(0, 2);
 
   return (
     <div className="space-y-5">
       <p className="text-xs text-muted">
-        依財金固定長度規格切片。表頭＝控制首錄、表尾＝控制尾錄（不含「交易代號／帳號」等明細共用欄）。
+        僅顯示明細錄的固定長度切片。控制首錄／尾錄請改看「表單欄位」（可編輯對應，不含長度定義）。
       </p>
 
-      <RecordFieldsTable
-        title={KIND_LABEL.header}
-        line={headerLine}
-        defs={schema.records.header.fields}
-      />
-
-      {detailSamples.map((line, i) => (
-        <RecordFieldsTable
-          key={line.index}
-          title={`${KIND_LABEL.detail}（第 ${i + 1} 筆／共 ${detailLines.length}）`}
-          line={line}
-          defs={schema.records.detail.fields}
-        />
-      ))}
+      {detailSamples.length === 0 ? (
+        <p className="text-sm text-muted">無明細樣本</p>
+      ) : (
+        detailSamples.map((line, i) => (
+          <RecordFieldsTable
+            key={line.index}
+            title={`${KIND_LABEL.detail}（第 ${i + 1} 筆／共 ${detailLines.length}）`}
+            line={line}
+            defs={schema.records.detail.fields}
+          />
+        ))
+      )}
       {detailLines.length > detailSamples.length && (
         <p className="text-xs text-muted">
-          另有 {detailLines.length - detailSamples.length} 筆明細未全部列出（見「原始列」）
+          另有 {detailLines.length - detailSamples.length}{" "}
+          筆明細未全部列出（見「原始列」）
         </p>
       )}
-
-      <RecordFieldsTable
-        title={KIND_LABEL.trailer}
-        line={trailerLine}
-        defs={schema.records.trailer.fields}
-      />
     </div>
   );
 }
@@ -639,21 +630,12 @@ function FormPreview({
   formNotes: Record<string, string>;
   branches: Branch[];
 }) {
-  const headerLine = result.lines.find((l) => l.kind === "header");
-  const trailerLine = result.lines.find((l) => l.kind === "trailer");
-
   return (
     <div className="space-y-4">
-      <RecordFieldsTable
-        title="控制首錄（HEADER）"
-        line={headerLine}
-        defs={schema.records.header.fields}
-      />
-
       <section>
-        <h4 className="mb-1 text-sm font-bold">提出／發動者資料（寫入明細共用）</h4>
+        <h4 className="mb-1 text-sm font-bold">控制首錄</h4>
         <p className="mb-2 text-xs text-muted">
-          這些不是控制首錄欄位；匯入時由首錄衍生欄與明細列還原，供表單編輯。
+          提出／發動者資料（匯入後可於表單編輯）
         </p>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="data-table">
@@ -732,11 +714,37 @@ function FormPreview({
         </div>
       </section>
 
-      <RecordFieldsTable
-        title="控制尾錄（FOOTER）"
-        line={trailerLine}
-        defs={schema.records.trailer.fields}
-      />
+      <section>
+        <h4 className="mb-1 text-sm font-bold">控制尾錄</h4>
+        <p className="mb-2 text-xs text-muted">依明細彙總（產生時自動計算）</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-lg border border-border px-3 py-2">
+            <div className="text-xs text-muted">總筆數</div>
+            <div className="font-mono text-sm">
+              {(
+                result.trailer.TCOUNT ||
+                String(result.detailCount)
+              ).replace(/^0+/, "") || "0"}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border px-3 py-2">
+            <div className="text-xs text-muted">總金額</div>
+            <div className="font-mono text-sm">
+              {(result.trailer.TAMT || "0").replace(/^0+/, "") || "0"}
+            </div>
+          </div>
+          {schema.form.header.some((f) => f.key === "ydate") ? (
+            <div className="rounded-lg border border-border px-3 py-2">
+              <div className="text-xs text-muted">前一營業日</div>
+              <div className="font-mono text-sm">
+                {result.header.ydate?.trim() ||
+                  result.trailer.YDATE?.trim() ||
+                  "—"}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
@@ -783,7 +791,7 @@ function RawPreview({
   );
 }
 
-/** 編輯畫面用：依目前提出資料預覽控制首錄欄位（對齊固定長度 HEADER） */
+/** 編輯畫面用：僅顯示欄位名稱與值（不含長度／代號定義） */
 export function ControlHeaderPreview({
   schema,
   header,
@@ -806,29 +814,17 @@ export function ControlHeaderPreview({
   };
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="data-table text-xs">
-        <thead>
-          <tr>
-            <th>欄位</th>
-            <th>ID</th>
-            <th>長度</th>
-            <th>值</th>
-          </tr>
-        </thead>
-        <tbody>
-          {schema.records.header.fields
-            .filter((f) => f.id !== "FILLER")
-            .map((f) => (
-              <tr key={f.id}>
-                <td className="whitespace-nowrap">{f.label || f.id}</td>
-                <td className="font-mono">{f.id}</td>
-                <td className="text-center">{f.length}</td>
-                <td className="font-mono">{values[f.id] || "—"}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {schema.records.header.fields
+        .filter((f) => f.id !== "FILLER")
+        .map((f) => (
+          <div key={f.id}>
+            <div className="field-label">{f.label || f.id}</div>
+            <div className="field-input font-mono bg-surface-2">
+              {values[f.id] || "—"}
+            </div>
+          </div>
+        ))}
     </div>
   );
 }
@@ -856,33 +852,21 @@ export function ControlTrailerPreview({
       "9990250",
     TCOUNT: String(totalCount),
     TAMT: String(Math.floor(totalAmount)),
-    YDATE: "（空白）",
+    YDATE: header.ydate?.trim() || "（空白）",
   };
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="data-table text-xs">
-        <thead>
-          <tr>
-            <th>欄位</th>
-            <th>ID</th>
-            <th>長度</th>
-            <th>值</th>
-          </tr>
-        </thead>
-        <tbody>
-          {schema.records.trailer.fields
-            .filter((f) => f.id !== "FILLER")
-            .map((f) => (
-              <tr key={f.id}>
-                <td className="whitespace-nowrap">{f.label || f.id}</td>
-                <td className="font-mono">{f.id}</td>
-                <td className="text-center">{f.length}</td>
-                <td className="font-mono">{values[f.id] ?? "—"}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {schema.records.trailer.fields
+        .filter((f) => f.id !== "FILLER")
+        .map((f) => (
+          <div key={f.id}>
+            <div className="field-label">{f.label || f.id}</div>
+            <div className="field-input font-mono bg-surface-2">
+              {values[f.id] ?? "—"}
+            </div>
+          </div>
+        ))}
     </div>
   );
 }

@@ -63,11 +63,7 @@ import {
 } from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
 import { ConvertR01Dialog } from "./ConvertR01Dialog";
-import {
-  ControlHeaderPreview,
-  ControlTrailerPreview,
-  ImportPreviewDialog,
-} from "./ImportPreviewDialog";
+import { ImportPreviewDialog } from "./ImportPreviewDialog";
 import { PartitionToolsDialog } from "./PartitionToolsDialog";
 import { PartitionWorkspaceBar } from "./PartitionWorkspaceBar";
 import { usePartitionStore } from "@/lib/ach/partitionStore";
@@ -842,23 +838,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
         <div className="mb-4 space-y-4">
           <div>
-            <h3 className="mb-1 text-sm font-bold text-fg">控制首錄（HEADER）</h3>
+            <h3 className="mb-1 text-sm font-bold text-fg">控制首錄</h3>
             <p className="mb-2 text-xs text-muted">
-              對照財金固定長度首錄：首錄別、資料代號、處理日期、處理時間、發送／接收單位代號、版次。交易代號／帳號／統編不在此列。
-            </p>
-            <ControlHeaderPreview
-              schema={schema}
-              header={header}
-              branches={branches}
-            />
-          </div>
-
-          <div>
-            <h3 className="mb-1 text-sm font-bold text-fg">
-              提出／發動者資料（寫入明細共用）
-            </h3>
-            <p className="mb-2 text-xs text-muted">
-              供編輯與檢核；產生檔時寫入明細錄（並衍生首錄發送單位代號）。
+              編輯提出／發動者資料；產生檔時寫入對應欄位。
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {schema.form.header.map((field) => {
@@ -933,17 +915,32 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
 
           <div>
-            <h3 className="mb-1 text-sm font-bold text-fg">控制尾錄（FOOTER）</h3>
+            <h3 className="mb-1 text-sm font-bold text-fg">控制尾錄</h3>
             <p className="mb-2 text-xs text-muted">
-              對照財金固定長度尾錄（總筆數、總金額等，產生時自動計算）。
+              產生檔時依明細自動計算；以下為目前彙總。
             </p>
-            <ControlTrailerPreview
-              schema={schema}
-              header={header}
-              totalCount={stats.count}
-              totalAmount={stats.amount}
-              branches={branches}
-            />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <div className="field-label">總筆數</div>
+                <div className="field-input font-mono bg-surface-2">
+                  {stats.count.toLocaleString("zh-TW")}
+                </div>
+              </div>
+              <div>
+                <div className="field-label">總金額</div>
+                <div className="field-input font-mono bg-surface-2">
+                  {stats.amount.toLocaleString("zh-TW")}
+                </div>
+              </div>
+              {schema.form.header.some((f) => f.key === "ydate") ? (
+                <div>
+                  <div className="field-label">前一營業日（YDATE）</div>
+                  <div className="field-input font-mono bg-surface-2">
+                    {header.ydate?.trim() || "（同上／產生時）"}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 

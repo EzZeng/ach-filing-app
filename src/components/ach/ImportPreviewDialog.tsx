@@ -699,9 +699,7 @@ function FormPreview({
                     <td className="text-center text-faint">{i + 1}</td>
                     <td className="font-mono">{row.seq || ""}</td>
                     <td className="font-mono">
-                      {row.txType
-                        ? formatTxTypeLabel(row.txType as "SD" | "SC")
-                        : ""}
+                      {row.txType ? formatTxTypeLabel(row.txType) : ""}
                     </td>
                     {schema.form.detail.map((f) => (
                       <td

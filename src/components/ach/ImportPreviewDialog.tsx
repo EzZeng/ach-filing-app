@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   CheckCircle2,
   FileUp,
   Filter,
   ListTree,
   Loader2,
+  Scissors,
   X,
 } from "lucide-react";
 import type {
@@ -49,6 +51,10 @@ type Props = {
     filters: DetailFilters,
     global: string,
   ) => void | Promise<void>;
+  /** 大檔：分割下載＋索引 */
+  onPartition?: () => void;
+  /** 大檔：串流轉 R01 後合併輸出 */
+  onLargeConvertR01?: () => void;
 };
 
 type PreviewTab = "fields" | "form" | "raw";
@@ -71,6 +77,8 @@ export function ImportPreviewDialog({
   onClose,
   onApply,
   onFilterScan,
+  onPartition,
+  onLargeConvertR01,
 }: Props) {
   /** 預設以固定長度欄位（控制首／尾錄）為準 */
   const [tab, setTab] = useState<PreviewTab>("fields");
@@ -250,7 +258,7 @@ export function ImportPreviewDialog({
                 <span>
                   {result.filterActive
                     ? `符合篩選仍有 ${result.matchedCount.toLocaleString("zh-TW")} 筆，超過上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆。請再縮小篩選條件。`
-                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。請先在下方「預先篩選」欄位後再載入符合結果。`}
+                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。可「預先篩選」載入部分列，或「分割大檔」／「大檔轉 R01」不經表單處理。`}
                 </span>
               </div>
             )}
@@ -352,6 +360,32 @@ export function ImportPreviewDialog({
                 : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
           </p>
           <div className="flex flex-wrap gap-2">
+            {sourceFile && onPartition ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy || result.detailCount === 0}
+                onClick={onPartition}
+                title="分割成 y 個小檔並建立 index"
+              >
+                <Scissors className="size-4" />
+                分割大檔
+              </button>
+            ) : null}
+            {sourceFile &&
+            onLargeConvertR01 &&
+            schema.code === "ACHP01" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy || result.detailCount === 0}
+                onClick={onLargeConvertR01}
+                title="串流分塊轉 R01 後合併輸出"
+              >
+                <ArrowRightLeft className="size-4" />
+                大檔轉 R01
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-secondary"

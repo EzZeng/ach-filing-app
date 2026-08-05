@@ -5,7 +5,7 @@ import type {
   RecordFieldDef,
 } from "./schema";
 import { emptyDetailRow, emptyHeader } from "./engine";
-import { newRowId } from "./utils";
+import { newRowId, toHalfWidthAlnum } from "./utils";
 import {
   emptyDetailFilters,
   hasActiveFilters,
@@ -123,7 +123,8 @@ export async function detectFormatCodeFromFile(file: File): Promise<string | nul
 }
 
 function unpadField(raw: string, def: RecordFieldDef): string {
-  let s = raw ?? "";
+  // 固定長度常見尾端 null／空白；先清控制字元再依 pad 規則
+  let s = String(raw ?? "").replace(/\u0000/g, " ");
   const pad = def.pad ?? { side: "right" as const, char: " " };
 
   if (def.transform === "firstChar") {
@@ -151,6 +152,11 @@ function unpadField(raw: string, def: RecordFieldDef): string {
 
   if (def.charset === "digit" || def.charset === "alnum") {
     s = s.replace(/[ \t]+$/g, "");
+  }
+
+  // 文數字欄位：全形英數字轉半形（不在此過濾，避免匯入預覽丟字）
+  if (def.charset === "alnum" || def.charset === "digit") {
+    s = toHalfWidthAlnum(s);
   }
 
   return s;
@@ -191,6 +197,16 @@ function collectKeyedValues(
   return out;
 }
 
+function fieldText(f: ParsedRecordField): string {
+  const primary = (f.value ?? "").trim();
+  if (primary) return primary;
+  // value 被 charset 處理成空時，回退原始切片（去尾空白／null）
+  return String(f.raw ?? "")
+    .replace(/\u0000/g, " ")
+    .replace(/[ \t]+$/g, "")
+    .trim();
+}
+
 function detailRowFromFields(
   schema: FormatSchema,
   fields: ParsedRecordField[],
@@ -200,12 +216,28 @@ function detailRowFromFields(
   for (const f of schema.form.detail) {
     row[f.key] = values[f.key] ?? "";
   }
-  // 預覽用：附帶非表單編輯、但檢視時常需要的欄位
+  // 以欄位 ID／key 再對一次，避免 source/key 對應疏漏（CNO／USERNO→userNo）
   for (const f of fields) {
-    if (f.id === "SEQ" && f.value) row.seq = f.value;
-    if (f.id === "TXTYPE" && f.value) row.txType = f.value;
-    if (f.id === "TYPE" && f.value) row.type = f.value;
-    if (f.id === "TXID" && f.value) row.txid = f.value;
+    if (f.id === "CNO" || f.id === "USERNO" || f.key === "userNo") {
+      const v = fieldText(f);
+      if (v) row.userNo = v;
+    }
+    if (f.id === "SEQ") {
+      const v = fieldText(f);
+      if (v) row.seq = v;
+    }
+    if (f.id === "TXTYPE") {
+      const v = fieldText(f);
+      if (v) row.txType = v;
+    }
+    if (f.id === "TYPE") {
+      const v = fieldText(f);
+      if (v) row.type = v;
+    }
+    if (f.id === "TXID") {
+      const v = fieldText(f);
+      if (v) row.txid = v;
+    }
   }
   return row;
 }
@@ -303,6 +335,31 @@ function collectMatchedRow(acc: ParseAcc, row: DetailRow): void {
 }
 
 /**
+ * 處理一列原始文字；若為多筆固定長度黏貼（無換行），拆成多列再解析。
+ * 回傳實際消耗的列數（供串流列號累加）。
+ */
+function consumeRawLine(acc: ParseAcc, raw: string, index: number): number {
+  const rl = acc.schema.recordLength;
+  if (
+    raw.length > rl &&
+    raw.length % rl === 0 &&
+    (raw.startsWith("BOF") ||
+      raw.startsWith("N") ||
+      raw.startsWith("R") ||
+      raw.startsWith("EOF"))
+  ) {
+    let n = 0;
+    for (let i = 0; i < raw.length; i += rl) {
+      consumeLine(acc, raw.slice(i, i + rl), index + n);
+      n += 1;
+    }
+    return n;
+  }
+  consumeLine(acc, raw, index);
+  return raw || acc.sawNonEmpty ? 1 : 0;
+}
+
+/**
  * 串流／逐行處理一列。
  */
 function consumeLine(acc: ParseAcc, raw: string, index: number): void {
@@ -332,7 +389,11 @@ function consumeLine(acc: ParseAcc, raw: string, index: number): void {
       : null;
 
   if (kind === "header" || kind === "trailer") {
-    const fields = section ? parseRecordFields(raw, section) : [];
+    let line = raw;
+    if (line.length < acc.schema.recordLength) {
+      line = line + " ".repeat(acc.schema.recordLength - line.length);
+    }
+    const fields = section ? parseRecordFields(line, section) : [];
     const sample: ParsedLine = {
       index,
       kind,
@@ -369,7 +430,13 @@ function consumeLine(acc: ParseAcc, raw: string, index: number): void {
     return;
   }
 
-  const fields = section ? parseRecordFields(raw, section) : [];
+  // 固定長度以「位元組／字元一對一」切片；尾端不足則右補空白，避免 CNO 等後段欄讀成空
+  let line = raw;
+  if (line.length < acc.schema.recordLength) {
+    line = line + " ".repeat(acc.schema.recordLength - line.length);
+  }
+
+  const fields = section ? parseRecordFields(line, section) : [];
   if (acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples) {
     acc.detailSamples.push({
       index,
@@ -523,8 +590,9 @@ export function parseAchText(
     return buildResult(acc, { filename, detectedCode, fileSize });
   }
 
-  for (let i = 0; i < rawLines.length; i++) {
-    consumeLine(acc, rawLines[i] ?? "", i);
+  let lineIndex = 0;
+  for (const raw of rawLines) {
+    lineIndex += consumeRawLine(acc, raw ?? "", lineIndex);
   }
 
   return buildResult(acc, { filename, detectedCode, fileSize });
@@ -556,7 +624,8 @@ export async function parseAchFile(
   }
 
   const reader = file.stream().getReader();
-  const decoder = new TextDecoder("utf-8");
+  // ACH 固定長度以 byte 定位；用 latin1 讓 1 byte = 1 JS char，避免 UTF-8 多位元組位移
+  const decoder = new TextDecoder("latin1");
   let buf = "";
   let bytesRead = 0;
   let lineIndex = 0;
@@ -580,6 +649,43 @@ export async function parseAchFile(
     });
   };
 
+  /** 取出下一完整列（支援 \n、\r\n、僅 \r） */
+  const takeLine = (): string | null => {
+    const nl = buf.indexOf("\n");
+    const cr = buf.indexOf("\r");
+    if (nl < 0 && cr < 0) return null;
+
+    // 有 \n：以 \n 為界（若前一字為 \r 一併去掉）
+    if (nl >= 0 && (cr < 0 || nl <= cr)) {
+      let line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      return line;
+    }
+
+    // 僅見 \r：若是緩衝最後一字，可能是未讀完的 \r\n，先等下一 chunk
+    if (cr === buf.length - 1) return null;
+    let skip = 1;
+    if (buf[cr + 1] === "\n") skip = 2;
+    const line = buf.slice(0, cr);
+    buf = buf.slice(cr + skip);
+    return line;
+  };
+
+  const emitLine = async (line: string) => {
+    if (lineIndex === 0 && line.charCodeAt(0) === 0xfeff) {
+      line = line.slice(1);
+    }
+    const prev = lineIndex;
+    const consumed = consumeRawLine(acc, line, lineIndex);
+    if (consumed > 0) lineIndex += consumed;
+    if (Math.floor(lineIndex / 2000) > Math.floor(prev / 2000)) {
+      report();
+      // 讓出主執行緒，避免長檔解析時頁面完全卡死
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+  };
+
   try {
     while (true) {
       if (opts?.signal?.aborted) {
@@ -591,34 +697,19 @@ export async function parseAchFile(
       bytesRead += value.byteLength;
       buf += decoder.decode(value, { stream: true });
 
-      let nl: number;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        let line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        if (line.endsWith("\r")) line = line.slice(0, -1);
-        if (lineIndex === 0 && line.charCodeAt(0) === 0xfeff) {
-          line = line.slice(1);
-        }
-        consumeLine(acc, line, lineIndex);
-        lineIndex += 1;
-        if (lineIndex % 2000 === 0) {
-          report();
-          // 讓出主執行緒，避免長檔解析時頁面完全卡死
-          await new Promise<void>((r) => setTimeout(r, 0));
-        }
+      let line: string | null;
+      while ((line = takeLine()) !== null) {
+        await emitLine(line);
       }
       report();
     }
 
     buf += decoder.decode();
     if (buf.length) {
-      let line = buf;
-      if (line.endsWith("\r")) line = line.slice(0, -1);
-      if (lineIndex === 0 && line.charCodeAt(0) === 0xfeff) {
-        line = line.slice(1);
-      }
-      consumeLine(acc, line, lineIndex);
-      lineIndex += 1;
+      let rest = buf;
+      if (rest.endsWith("\r")) rest = rest.slice(0, -1);
+      buf = "";
+      await emitLine(rest);
     }
   } finally {
     try {

@@ -339,7 +339,19 @@ export const useFormStore = create<FormState>()(
         const imported = data.rows.map((src) => {
           const row = emptyDetailRow(schema, newRowId());
           for (const f of schema.form.detail) {
-            row[f.key] = sanitizeFieldInput(f, src[f.key] ?? "");
+            const raw = src[f.key] ?? "";
+            // 用戶號碼：匯入時保留原文數字英數與 -_/，避免 charset 過嚴變空白
+            if (f.key === "userNo") {
+              row[f.key] = sanitizeFieldInput(f, raw);
+              if (!row[f.key] && String(raw).trim()) {
+                row[f.key] = String(raw)
+                  .replace(/[\u0000-\u001f]/g, "")
+                  .trim()
+                  .slice(0, f.length > 0 ? f.length : undefined);
+              }
+            } else {
+              row[f.key] = sanitizeFieldInput(f, raw);
+            }
           }
           return row;
         });

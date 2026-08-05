@@ -706,7 +706,7 @@ function FormPreview({
                         key={f.key}
                         className={`font-mono ${f.ui?.align === "right" ? "text-right" : ""}`}
                       >
-                        {row[f.key] || ""}
+                        {row[f.key] ?? ""}
                       </td>
                     ))}
                     <td className="text-muted">

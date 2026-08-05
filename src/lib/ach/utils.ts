@@ -1,11 +1,18 @@
-/** 只保留數字 (SafeCHR mode 1) */
-export function safeDigits(text: string): string {
-  return String(text ?? "").replace(/[^0-9]/g, "");
+/** 全形英數字 → 半形（匯入常見從 Excel 貼上） */
+export function toHalfWidthAlnum(text: string): string {
+  return String(text ?? "").replace(/[\uff01-\uff5e]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
+  );
 }
 
-/** 只保留英數字 (SafeCHR mode 2) */
+/** 只保留數字 (SafeCHR mode 1) */
+export function safeDigits(text: string): string {
+  return toHalfWidthAlnum(text).replace(/[^0-9]/g, "");
+}
+
+/** 只保留英數字 (SafeCHR mode 2)；允許常見分隔符 - _ / */
 export function safeAlnum(text: string): string {
-  return String(text ?? "").replace(/[^0-9a-zA-Z]/g, "");
+  return toHalfWidthAlnum(text).replace(/[^0-9a-zA-Z\-_\/]/g, "");
 }
 
 export function padLeft(value: string | number, len: number, ch = "0"): string {

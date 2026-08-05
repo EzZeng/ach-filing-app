@@ -15,6 +15,7 @@ import {
   Globe,
   Upload,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
@@ -45,8 +46,9 @@ import {
   type ExportFormatId,
 } from "@/lib/ach/exportFormats";
 import {
-  parseAchText,
-  resolveImportSchema,
+  parseAchFile,
+  resolveImportSchemaFromFile,
+  type ImportProgress,
   type ImportResult,
 } from "@/lib/ach/import";
 import { normalizeSubmitDate } from "@/lib/ach/utils";
@@ -104,6 +106,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(
+    null,
+  );
   const [dragOver, setDragOver] = useState(false);
 
   const workspaceOpen = isWorkspaceOpen(schema.code);
@@ -150,10 +155,23 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     [schema, header, txids, branches],
   );
 
-  const rowErrs = useMemo(
-    () => rows.map((r) => validateDetailRow(schema, r, txids, branches, header)),
-    [schema, rows, txids, branches, header],
-  );
+  const rowErrs = useMemo(() => {
+    // 大量列時避免一次驗證全部造成主執行緒卡死／記憶體暴衝
+    const MAX_FULL_VALIDATE = 800;
+    if (rows.length <= MAX_FULL_VALIDATE) {
+      return rows.map((r) =>
+        validateDetailRow(schema, r, txids, branches, header),
+      );
+    }
+    return rows.map((r) => {
+      if (isRowEmpty(r, schema)) {
+        const empty: Record<string, string | null> = {};
+        for (const f of schema.form.detail) empty[f.key] = null;
+        return empty;
+      }
+      return validateDetailRow(schema, r, txids, branches, header);
+    });
+  }, [schema, rows, txids, branches, header]);
 
   const stats = useMemo(() => {
     let count = 0;
@@ -298,24 +316,45 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   }
 
   async function handleImportFile(file: File) {
-    let text: string;
+    setImportProgress({
+      bytesRead: 0,
+      totalBytes: file.size,
+      linesRead: 0,
+      detailCount: 0,
+    });
     try {
-      text = await file.text();
-    } catch {
-      toast.error("無法讀取檔案");
-      return;
+      const target =
+        (await resolveImportSchemaFromFile(file, formats, schema)) ?? schema;
+      const result = await parseAchFile(file, target, {
+        filename: file.name,
+        onProgress: setImportProgress,
+      });
+      if (
+        result.errors.length &&
+        result.detailCount === 0 &&
+        !result.lines.length
+      ) {
+        toast.error(result.errors[0] ?? "匯入失敗");
+        return;
+      }
+      setImportResult(result);
+      if (result.tooLargeForForm) {
+        toast.message(
+          `已完成串流檢核：${result.detailCount.toLocaleString("zh-TW")} 筆（檔案過大，無法套用編輯）`,
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "無法讀取檔案");
+    } finally {
+      setImportProgress(null);
     }
-    const target =
-      resolveImportSchema(text, formats, schema) ?? schema;
-    const result = parseAchText(text, target, { filename: file.name });
-    if (result.errors.length && result.detailCount === 0 && !result.lines.length) {
-      toast.error(result.errors[0] ?? "匯入失敗");
-      return;
-    }
-    setImportResult(result);
   }
 
   async function applyImport(result: ImportResult) {
+    if (result.tooLargeForForm) {
+      toast.error("檔案過大，無法套用到表單");
+      return;
+    }
     loadFromImport(
       result.schema,
       {
@@ -358,10 +397,58 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     />
   );
 
+  const importLoadingMask = importProgress ? (
+    <div
+      className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/45 p-4 backdrop-blur-[1px]"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="card flex w-full max-w-sm flex-col items-center gap-3 px-6 py-8 text-center">
+        <Loader2 className="size-9 animate-spin text-primary" />
+        <p className="text-sm font-semibold text-fg">串流讀取檔案中…</p>
+        <p className="text-xs text-muted">
+          已讀{" "}
+          {importProgress.totalBytes > 0
+            ? `${Math.min(
+                100,
+                Math.round(
+                  (importProgress.bytesRead / importProgress.totalBytes) * 100,
+                ),
+              )}%`
+            : "…"}
+          {" · "}
+          明細 {importProgress.detailCount.toLocaleString("zh-TW")} 筆
+          {" · "}
+          列 {importProgress.linesRead.toLocaleString("zh-TW")}
+        </p>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+          <div
+            className="h-full bg-primary transition-[width] duration-150"
+            style={{
+              width: `${
+                importProgress.totalBytes > 0
+                  ? Math.min(
+                      100,
+                      (importProgress.bytesRead / importProgress.totalBytes) *
+                        100,
+                    )
+                  : 0
+              }%`,
+            }}
+          />
+        </div>
+        <p className="text-[11px] text-faint">
+          大檔採逐列串流，不會一次載入整份到記憶體
+        </p>
+      </div>
+    </div>
+  ) : null;
+
   // —— 預設：引導先上傳既有 P01／P02，隱藏新建表單 ——
   if (!workspaceOpen) {
     return (
       <div className="space-y-4">
+        {importLoadingMask}
         <div className="card overflow-hidden">
           <div className="border-b border-border bg-surface-2/60 px-4 py-4 sm:px-5">
             <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -471,6 +558,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   return (
     <div className="space-y-4">
+      {importLoadingMask}
       <div className="card p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>

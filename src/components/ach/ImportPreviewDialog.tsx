@@ -13,7 +13,11 @@ import type {
   RecordFieldDef,
   Txid,
 } from "@/lib/ach/schema";
-import type { ImportResult, ParsedLine } from "@/lib/ach/import";
+import {
+  IMPORT_LIMITS,
+  type ImportResult,
+  type ParsedLine,
+} from "@/lib/ach/import";
 import {
   formatTxTypeLabel,
   lookupBranch,
@@ -52,7 +56,11 @@ export function ImportPreviewDialog({
   const [applying, setApplying] = useState(false);
 
   const schema = result?.schema;
-  const canApply = !!result && result.errors.length === 0 && !applying;
+  const canApply =
+    !!result &&
+    result.errors.length === 0 &&
+    !result.tooLargeForForm &&
+    !applying;
 
   useEffect(() => {
     if (!open) setApplying(false);
@@ -137,7 +145,11 @@ export function ImportPreviewDialog({
                 V{schema.version.replace(/^V/i, "")}
               </span>
               <span className="text-xs text-muted">
-                列長 {schema.recordLength} · 明細 {result.detailCount} 筆
+                列長 {schema.recordLength} · 明細{" "}
+                {result.detailCount.toLocaleString("zh-TW")} 筆
+                {result.fileSize > 0
+                  ? ` · ${(result.fileSize / (1024 * 1024)).toFixed(1)} MB`
+                  : ""}
               </span>
             </div>
             <p className="truncate text-xs text-muted" title={result.filename}>
@@ -157,8 +169,30 @@ export function ImportPreviewDialog({
           </button>
         </div>
 
-        {(result.errors.length > 0 || result.warnings.length > 0) && (
+        {(result.tooLargeForForm ||
+          result.errors.length > 0 ||
+          result.warnings.length > 0 ||
+          result.lengthErrorCount > 0) && (
           <div className="space-y-1.5 border-b border-border bg-surface-2/60 px-4 py-3">
+            {result.tooLargeForForm && (
+              <div className="flex items-start gap-2 text-sm font-semibold text-danger">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  檔案過大（
+                  {result.detailCount.toLocaleString("zh-TW")} 筆明細），無法套用到可編輯表單（上限{" "}
+                  {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")}{" "}
+                  筆）。已改為串流預覽／檢核摘要，請分割檔案後再匯入編輯。
+                </span>
+              </div>
+            )}
+            {result.lengthErrorCount > 0 && (
+              <div className="flex items-start gap-2 text-sm text-accent">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  列長不符 {result.lengthErrorCount.toLocaleString("zh-TW")} 筆
+                </span>
+              </div>
+            )}
             {result.errors.map((msg) => (
               <div
                 key={`e-${msg}`}
@@ -223,7 +257,9 @@ export function ImportPreviewDialog({
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
           <p className="text-xs text-muted">
-            套用後會覆寫「{schema.code}」目前的提出資料與明細
+            {result.tooLargeForForm
+              ? "此檔僅供預覽／檢核摘要，無法套用到表單"
+              : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -232,13 +268,18 @@ export function ImportPreviewDialog({
               onClick={handleClose}
               disabled={applying}
             >
-              取消
+              {result.tooLargeForForm ? "關閉" : "取消"}
             </button>
             <button
               type="button"
               className="btn btn-primary"
               disabled={!canApply}
               onClick={() => void handleApply()}
+              title={
+                result.tooLargeForForm
+                  ? `超過 ${IMPORT_LIMITS.maxFormDetailRows} 筆上限`
+                  : undefined
+              }
             >
               {applying ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -420,9 +461,12 @@ function FormPreview({
       </section>
 
       <section>
-        <div className="mb-2 flex items-center gap-2">
-          <h4 className="text-sm font-bold">明細</h4>
-          <span className="stat-pill text-xs">{result.detailCount} 筆</span>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <h4 className="text-sm font-bold">明細預覽</h4>
+          <span className="stat-pill text-xs">
+            顯示 {result.previewRows.length}／
+            {result.detailCount.toLocaleString("zh-TW")} 筆
+          </span>
         </div>
         <div className="scroll-panel max-h-[40vh] rounded-lg border border-border">
           <table className="data-table">
@@ -436,7 +480,7 @@ function FormPreview({
               </tr>
             </thead>
             <tbody>
-              {result.rows.length === 0 ? (
+              {result.previewRows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={schema.form.detail.length + 2}
@@ -446,7 +490,7 @@ function FormPreview({
                   </td>
                 </tr>
               ) : (
-                result.rows.map((row, i) => (
+                result.previewRows.map((row, i) => (
                   <tr key={row.id}>
                     <td className="text-center text-faint">{i + 1}</td>
                     {schema.form.detail.map((f) => (

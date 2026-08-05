@@ -29,4 +29,5 @@
 - The header **日期 (rocDate)** must not be in the past (ROC format, e.g. `01150804` = 2026-08-04).
 - Bank codes (header `bankCode` and detail `bankCode`) must match a code in `public/data/branch.json` (e.g. `0040000` = 台灣銀行).
 - ACHP01 **TXTYPE** is derived from `txid.json`: **SD＝代收**, **SC＝代付**. Header/trailer layout matches 財金「代收建檔小程式.xlsm」.
+- Large ACH uploads use **streaming parse** (`parseAchFile`); do not call `file.text()` on big files. Editable form apply is capped at **5,000** detail rows (`IMPORT_LIMITS.maxFormDetailRows`); larger files (e.g. ~100MB / 400k rows) get preview + length-check summary only to avoid OOM.
 - Form state persists in `localStorage` under key `ach-filing-forms-v1` (Zustand persist). To prefill deterministically during manual testing you can seed this key and reload; a successful export shows a green toast "已產生 …txt（N 筆）" and downloads the file.

@@ -98,6 +98,10 @@ export function HelpPanel() {
           <li>
             預覽可切換「表單欄位／固定長度欄位／原始列」；確認後「套用到表單」進入檢核與加工
           </li>
+          <li>
+            大檔（例如數十萬筆）採<strong className="text-fg">串流讀取</strong>
+            ，避免記憶體爆掉；超過可編輯上限時僅提供預覽／列長檢核，請分割檔案後再套用
+          </li>
         </ul>
       </div>
 

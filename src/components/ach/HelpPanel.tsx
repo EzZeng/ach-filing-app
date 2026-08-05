@@ -25,6 +25,7 @@ export function HelpPanel() {
           大檔可<strong className="text-fg">分割成 y 個小檔＋索引</strong>，
           改檔後再<strong className="text-fg">合併回大檔</strong>；
           或直接「大檔轉 R01」串流分塊後合併輸出。
+          多檔輸出會<strong className="text-fg">打包 ZIP</strong>或<strong className="text-fg">選一次資料夾</strong>寫入，不必逐檔另存。
           檔案代號與欄位格式皆以 JSON 參數化。
         </p>
       </div>

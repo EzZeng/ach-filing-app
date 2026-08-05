@@ -56,7 +56,11 @@ import {
   type ImportResult,
 } from "@/lib/ach/import";
 import { normalizeSubmitDate } from "@/lib/ach/utils";
-import { saveAchFile, saveAchFiles } from "@/lib/ach/desktop";
+import {
+  describeSaveResult,
+  saveAchFile,
+  saveAchFiles,
+} from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
 import { ConvertR01Dialog } from "./ConvertR01Dialog";
 import {
@@ -316,15 +320,19 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       branches,
       want,
     );
-    await saveAchFiles(
+    const saved = await saveAchFiles(
       artifacts.map((a) => ({
         filename: a.filename,
         content: a.content,
         mime: a.mime,
       })),
     );
+    if (saved.method === "canceled") {
+      toast.message("已取消儲存");
+      return;
+    }
     toast.success(
-      `已產生 ${artifacts.map((a) => a.filename).join("、")}（${result.count} 筆）`,
+      `已產生（${result.count} 筆）· ${describeSaveResult(saved)}`,
     );
   }
 
@@ -353,16 +361,19 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         branches,
         opts,
       );
-      await saveAchFiles(
+      const saved = await saveAchFiles(
         result.files.map((f) => ({
           filename: f.filename,
           content: f.content,
           mime: "text/plain;charset=utf-8",
         })),
       );
-      const names = result.files.map((f) => f.filename).join("、");
+      if (saved.method === "canceled") {
+        toast.message("已取消儲存");
+        return;
+      }
       toast.success(
-        `已轉檔 ${names}（${result.detailCount} 筆，RCODE=${result.rcode}）`,
+        `已轉檔（${result.detailCount} 筆，RCODE=${result.rcode}）· ${describeSaveResult(saved)}`,
       );
       setConvertOpen(false);
     } catch (e) {

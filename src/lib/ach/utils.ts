@@ -117,12 +117,7 @@ export function padAccount16(value: string): string {
   return padLeft(digits, 16);
 }
 
-export function downloadTextFile(
-  filename: string,
-  content: string,
-  mime = "text/plain;charset=utf-8",
-) {
-  const blob = new Blob([content], { type: mime });
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -131,6 +126,14 @@ export function downloadTextFile(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+export function downloadTextFile(
+  filename: string,
+  content: string,
+  mime = "text/plain;charset=utf-8",
+) {
+  downloadBlob(filename, new Blob([content], { type: mime }));
 }
 
 export function newRowId(): string {

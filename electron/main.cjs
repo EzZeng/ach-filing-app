@@ -153,3 +153,38 @@ ipcMain.handle("save-text-file", async (_event, { filename, content }) => {
   fs.writeFileSync(filePath, content, "utf8");
   return { ok: true, filePath };
 });
+
+/** 多檔：只選一次資料夾 */
+ipcMain.handle("save-text-files-to-dir", async (_event, { files }) => {
+  const list = Array.isArray(files) ? files : [];
+  if (!list.length) return { ok: false, canceled: true };
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: "選擇儲存資料夾（一次寫入全部檔案）",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (canceled || !filePaths?.[0]) return { ok: false, canceled: true };
+  const dirPath = filePaths[0];
+  let count = 0;
+  for (const f of list) {
+    const name = path.basename(String(f.filename || "ACH.txt"));
+    const dest = path.join(dirPath, name);
+    fs.writeFileSync(dest, String(f.content ?? ""), "utf8");
+    count += 1;
+  }
+  return { ok: true, dirPath, count };
+});
+
+/** ZIP 等二進位：一次另存 */
+ipcMain.handle("save-binary-file", async (_event, { filename, base64 }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: "儲存打包檔",
+    defaultPath: filename || "ACH-bundle.zip",
+    filters: [
+      { name: "ZIP", extensions: ["zip"] },
+      { name: "所有檔案", extensions: ["*"] },
+    ],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  fs.writeFileSync(filePath, Buffer.from(String(base64 || ""), "base64"));
+  return { ok: true, filePath };
+});

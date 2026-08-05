@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   FileUp,
   ListTree,
+  Loader2,
   X,
 } from "lucide-react";
 import type {
@@ -26,7 +27,7 @@ type Props = {
   txids: Txid[];
   branches: Branch[];
   onClose: () => void;
-  onApply: (result: ImportResult) => void;
+  onApply: (result: ImportResult) => void | Promise<void>;
 };
 
 type PreviewTab = "fields" | "form" | "raw";
@@ -48,9 +49,14 @@ export function ImportPreviewDialog({
 }: Props) {
   /** 預設以固定長度欄位（控制首／尾錄）為準 */
   const [tab, setTab] = useState<PreviewTab>("fields");
+  const [applying, setApplying] = useState(false);
 
   const schema = result?.schema;
-  const canApply = !!result && result.errors.length === 0;
+  const canApply = !!result && result.errors.length === 0 && !applying;
+
+  useEffect(() => {
+    if (!open) setApplying(false);
+  }, [open]);
 
   const formNotes = useMemo(() => {
     if (!result || !schema) return {};
@@ -70,21 +76,57 @@ export function ImportPreviewDialog({
     return notes;
   }, [result, schema, txids, branches]);
 
+  async function handleApply() {
+    if (!result || !canApply) return;
+    setApplying(true);
+    // 讓 loading mask 先完成繪製，再執行套用（大量明細時較不易卡住）
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        window.setTimeout(resolve, 40);
+      });
+    });
+    try {
+      await onApply(result);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  function handleClose() {
+    if (applying) return;
+    onClose();
+  }
+
   if (!open || !result || !schema) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
-      onClick={onClose}
+      onClick={handleClose}
       role="presentation"
     >
       <div
-        className="card flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden"
+        className="card relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-busy={applying}
         aria-label="匯入預覽"
       >
+        {applying && (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-surface/80 backdrop-blur-[1px]"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="size-9 animate-spin text-primary" />
+            <p className="text-sm font-semibold text-fg">套用到表單中…</p>
+            <p className="text-xs text-muted">
+              正在載入 {result.detailCount} 筆明細，請稍候
+            </p>
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0">
             <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -107,7 +149,8 @@ export function ImportPreviewDialog({
           <button
             type="button"
             className="btn btn-ghost px-2"
-            onClick={onClose}
+            onClick={handleClose}
+            disabled={applying}
             aria-label="關閉"
           >
             <X className="size-5" />
@@ -183,17 +226,26 @@ export function ImportPreviewDialog({
             套用後會覆寫「{schema.code}」目前的提出資料與明細
           </p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleClose}
+              disabled={applying}
+            >
               取消
             </button>
             <button
               type="button"
               className="btn btn-primary"
               disabled={!canApply}
-              onClick={() => onApply(result)}
+              onClick={() => void handleApply()}
             >
-              <CheckCircle2 className="size-4" />
-              套用到表單
+              {applying ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
+              {applying ? "套用中…" : "套用到表單"}
             </button>
           </div>
         </div>

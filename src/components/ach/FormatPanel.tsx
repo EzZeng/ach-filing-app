@@ -315,7 +315,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     setImportResult(result);
   }
 
-  function applyImport(result: ImportResult) {
+  async function applyImport(result: ImportResult) {
     loadFromImport(
       result.schema,
       {
@@ -327,6 +327,10 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     if (result.schema.code !== schema.code) {
       onSelectFormat?.(result.schema.code);
     }
+    // 讓 loading mask 至少短暫可見，避免瞬間閃過
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 180);
+    });
     setImportResult(null);
     toast.success(
       `已匯入 ${result.schema.code}（${result.detailCount} 筆明細），可進行檢核與加工`,

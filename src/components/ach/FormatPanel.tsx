@@ -69,6 +69,8 @@ import {
   ImportPreviewDialog,
 } from "./ImportPreviewDialog";
 import { PartitionToolsDialog } from "./PartitionToolsDialog";
+import { PartitionWorkspaceBar } from "./PartitionWorkspaceBar";
+import { usePartitionStore } from "@/lib/ach/partitionStore";
 
 type Props = {
   schema: FormatSchema;
@@ -126,6 +128,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   const [partitionTools, setPartitionTools] = useState<{
     mode: "split" | "merge" | "convert";
   } | null>(null);
+  const [partitionFormDirty, setPartitionFormDirty] = useState(false);
+  const partitionSession = usePartitionStore((s) => s.session);
+  const markPartitionDirty = usePartitionStore((s) => s.markActiveDirty);
 
   const workspaceOpen = isWorkspaceOpen(schema.code);
   const workspace = getWorkspace(schema.code);
@@ -165,6 +170,33 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   const form = getForm(schema.code) ?? { header: {}, rows: [] };
   const header = form.header;
   const rows = form.rows;
+
+  /** 分割工作區編輯時標記未存回 */
+  const setHeaderT = (
+    code: string,
+    sch: FormatSchema,
+    key: string,
+    value: string,
+  ) => {
+    setHeader(code, sch, key, value);
+    if (partitionSession?.formatCode === code) {
+      setPartitionFormDirty(true);
+      markPartitionDirty();
+    }
+  };
+  const updateRowT = (
+    code: string,
+    sch: FormatSchema,
+    id: string,
+    key: string,
+    value: string,
+  ) => {
+    updateRow(code, sch, id, key, value);
+    if (partitionSession?.formatCode === code) {
+      setPartitionFormDirty(true);
+      markPartitionDirty();
+    }
+  };
 
   const headerErrs = useMemo(
     () => validateHeader(schema, header, txids, branches),
@@ -261,7 +293,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         header[field.key] ?? "",
       );
       if (value !== (header[field.key] ?? "")) {
-        setHeader(schema.code, schema, field.key, value);
+        setHeaderT(schema.code, schema, field.key, value);
       }
       if (convertedFromAd) toast.message("已將日期西元年轉換為民國年");
     }
@@ -596,6 +628,35 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         String(importResult?.header.date ?? header.date ?? "")
       }
       onClose={() => setPartitionTools(null)}
+      onOpenPartitionEdit={(payload) => {
+        loadFromImport(
+          schema,
+          { header: payload.header, rows: payload.rows },
+          { fileName: payload.fileName },
+        );
+        setPartitionFormDirty(false);
+        setImportResult(null);
+      }}
+    />
+  );
+
+  const partitionBar = (
+    <PartitionWorkspaceBar
+      schema={schema}
+      header={header}
+      rows={rows}
+      txids={txids}
+      branches={branches}
+      formDirty={partitionFormDirty}
+      onFormClean={() => setPartitionFormDirty(false)}
+      onLoadPart={(payload) => {
+        loadFromImport(
+          schema,
+          { header: payload.header, rows: payload.rows },
+          { fileName: payload.fileName },
+        );
+        setPartitionFormDirty(false);
+      }}
     />
   );
 
@@ -722,6 +783,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   return (
     <div className="space-y-4">
       {importLoadingMask}
+      {partitionBar}
       <div className="card p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -739,6 +801,12 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
               )}
               {workspace.source === "manual" && (
                 <span className="badge badge-warn">手動新建</span>
+              )}
+              {partitionSession?.formatCode === schema.code && (
+                <span className="badge badge-warn gap-1">
+                  <Scissors className="size-3" />
+                  分割編輯
+                </span>
               )}
             </div>
             <h2 className="text-lg font-bold text-fg">
@@ -810,7 +878,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                         className={`field-input ${err ? "err" : "warn"}`}
                         value={header[field.key] ?? ""}
                         onChange={(e) =>
-                          setHeader(schema.code, schema, field.key, e.target.value)
+                          setHeaderT(schema.code, schema, field.key, e.target.value)
                         }
                       >
                         {selectOptions(field).map((o) => (
@@ -828,7 +896,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                           maxLength={field.length || undefined}
                           placeholder={field.placeholder}
                           onChange={(e) =>
-                            setHeader(
+                            setHeaderT(
                               schema.code,
                               schema,
                               field.key,
@@ -1170,7 +1238,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                               className={`cell-input ${field.ui?.align === "right" ? "text-right" : ""} ${errs[field.key] ? "err" : ""}`}
                               value={row[field.key] ?? ""}
                               onChange={(e) =>
-                                updateRow(
+                                updateRowT(
                                   schema.code,
                                   schema,
                                   row.id,
@@ -1256,7 +1324,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         onClose={() => setPicker(null)}
         onSelect={(code) => {
           if (picker?.target === "header") {
-            setHeader(schema.code, schema, picker.key, code);
+            setHeaderT(schema.code, schema, picker.key, code);
           }
         }}
       />
@@ -1268,9 +1336,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
         onSelect={(code) => {
           if (!picker) return;
           if (picker.target === "header") {
-            setHeader(schema.code, schema, picker.key, code);
+            setHeaderT(schema.code, schema, picker.key, code);
           } else if (picker.rowId) {
-            updateRow(schema.code, schema, picker.rowId, picker.key, code);
+            updateRowT(schema.code, schema, picker.rowId, picker.key, code);
           }
         }}
       />

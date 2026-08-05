@@ -15,8 +15,14 @@ import {
   partitionAchFile,
   planPartitionSizes,
   planPartitions,
+  planPartitionsForEdit,
   stringifyPartitionIndex,
 } from "../src/lib/ach/partition";
+import {
+  parsePartToForm,
+  usePartitionStore,
+  mergeSessionToFile,
+} from "../src/lib/ach/partitionStore";
 import type { DetailRow, HeaderValues } from "../src/lib/ach/schema";
 
 const formats = loadEmbeddedFormats();
@@ -128,8 +134,43 @@ for (const f of converted.files) {
   assert.ok(f.lines.every((l) => l.length === 250));
 }
 
+// 可編輯分割：每包 ≤ 5000
+const editPlan = planPartitionsForEdit(12_000);
+assert.ok(editPlan.partCount >= 3);
+assert.ok(editPlan.sizes.every((n) => n <= 5_000));
+
+// 分割工作區：載入第一包到表單結構
+const firstParsed = parsePartToForm(p01, parts[0]!.content, parts[0]!.filename);
+assert.ok(firstParsed.detailCount > 0);
+assert.ok(firstParsed.rows.length >= firstParsed.detailCount);
+
+usePartitionStore.getState().startSession({
+  formatCode: "ACHP01",
+  sourceFilename: "sample-p01.txt",
+  index: parsed,
+  parts,
+});
+usePartitionStore.getState().setActiveIndex(0);
+const saved = usePartitionStore.getState().saveFormToActivePart(
+  p01,
+  firstParsed.header,
+  firstParsed.rows,
+  EMBEDDED_TXIDS,
+  EMBEDDED_BRANCHES,
+);
+assert.equal(saved.detailCount, firstParsed.detailCount);
+const sess = usePartitionStore.getState().session!;
+const fromSession = mergeSessionToFile(
+  p01,
+  sess,
+  EMBEDDED_TXIDS,
+  EMBEDDED_BRANCHES,
+);
+assert.equal(fromSession.detailCount, 7);
+usePartitionStore.getState().clearSession();
+
 console.log(
-  "OK partition/merge/convert-large: parts=",
+  "OK partition/merge/convert-large/edit-session: parts=",
   parts.length,
   "merged=",
   merged.detailCount,

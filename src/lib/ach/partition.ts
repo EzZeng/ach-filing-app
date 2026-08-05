@@ -108,6 +108,32 @@ export function planPartitionSizes(
   return Array.from({ length: y }, (_, i) => base + (i < rem ? 1 : 0));
 }
 
+/**
+ * 規劃「可在網頁表單編輯」的分割：每包 ≤ maxFormDetailRows。
+ * 若指定的 y 太小會自動加大。
+ */
+export function planPartitionsForEdit(
+  totalDetailCount: number,
+  preferredPartCount?: number,
+): PartitionPlan & { autoRaised: boolean; minPartCount: number } {
+  const x = Math.max(0, Math.floor(totalDetailCount));
+  const maxPer = IMPORT_LIMITS.maxFormDetailRows;
+  const minPartCount = Math.min(
+    Math.max(1, Math.ceil(x / maxPer) || 1),
+    PARTITION_LIMITS.maxPartCount,
+  );
+  if (x > 0 && Math.ceil(x / PARTITION_LIMITS.maxPartCount) > maxPer) {
+    throw new Error(
+      `共 ${x.toLocaleString("zh-TW")} 筆，即使拆成 ${PARTITION_LIMITS.maxPartCount} 包，每包仍超過可編輯上限 ${maxPer.toLocaleString("zh-TW")} 筆`,
+    );
+  }
+  let partCount = preferredPartCount ?? minPartCount;
+  const autoRaised = partCount < minPartCount;
+  partCount = Math.max(partCount, minPartCount);
+  const plan = planPartitions(x, { partCount });
+  return { ...plan, autoRaised, minPartCount };
+}
+
 /** 由筆數與「要幾個檔」或「每檔幾筆」規劃分割 */
 export function planPartitions(
   totalDetailCount: number,

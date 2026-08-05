@@ -22,10 +22,10 @@ export function HelpPanel() {
           <strong className="text-fg">SC＝代付</strong>。
           於 P01 可<strong className="text-fg">轉檔 R01</strong>
           （TYPE=R、對調提出／提回行與帳號、填入退件理由）。
-          大檔可<strong className="text-fg">分割成 y 個小檔＋索引</strong>，
-          改檔後再<strong className="text-fg">合併回大檔</strong>；
-          或直接「大檔轉 R01」串流分塊後合併輸出。
-          多檔輸出會<strong className="text-fg">打包 ZIP</strong>或<strong className="text-fg">選一次資料夾</strong>寫入，不必逐檔另存。
+          大檔可<strong className="text-fg">分割成 y 包</strong>後在網頁
+          <strong className="text-fg">逐包載入編輯</strong>，存回後
+          <strong className="text-fg">合併全部輸出</strong>；
+          亦可直接「大檔轉 R01」。多檔下載會打包 ZIP 或選一次資料夾。
           檔案代號與欄位格式皆以 JSON 參數化。
         </p>
       </div>

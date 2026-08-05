@@ -12,11 +12,25 @@ export function HelpPanel() {
           <h2 className="text-lg font-bold">關於本程式</h2>
         </div>
         <p className="text-sm leading-relaxed text-muted">
-          由財金「代收建檔小程式」Excel 巨集改寫。
-          <strong className="text-fg">檔案代號</strong>（如 ACHP01、ACHP02）與
-          <strong className="text-fg">欄位／長度／英數字檢核</strong>
-          皆以 JSON 參數化，新增格式不必改程式邏輯。
+          以既有財金 ACH <strong className="text-fg">P01 代收</strong>／
+          <strong className="text-fg">P02 授權</strong>固定長度檔為主，進行
+          <strong className="text-fg">檢核與加工</strong>。
+          開啟後請先上傳檔案；表單新建為進階選項。
+          檔案代號與欄位格式皆以 JSON 參數化。
         </p>
+      </div>
+
+      <div className="card p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <FileText className="size-5 text-primary" />
+          <h3 className="font-bold">建議流程</h3>
+        </div>
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+          <li>上傳既有 ACHP01／ACHP02 <code className="font-mono text-xs">.txt</code></li>
+          <li>預覽表頭、明細、固定長度欄位與原始列長</li>
+          <li>套用後檢核錯誤、修正資料</li>
+          <li>重新產生 TXT（或 HTML／JS）上傳檔</li>
+        </ol>
       </div>
 
       <div className="card p-5">
@@ -71,15 +85,15 @@ export function HelpPanel() {
         </div>
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
           <li>
-            在各格式分頁按<strong className="text-fg">匯入檔案</strong>，選擇已產生的
-            ACH 固定長度 <code className="font-mono text-xs">.txt</code>
+            預設畫面會<strong className="text-fg">引導先上傳</strong>既有 ACH 固定長度{" "}
+            <code className="font-mono text-xs">.txt</code>；新建空白表單收在「進階」
           </li>
           <li>
             依 BOF 列 CDATA（檔案代號）自動對應 JSON 格式，並以
             <code className="font-mono text-xs">records</code> 欄位定義切片預覽
           </li>
           <li>
-            預覽可切換「表單欄位／固定長度欄位／原始列」；確認後「套用到表單」覆寫該格式資料
+            預覽可切換「表單欄位／固定長度欄位／原始列」；確認後「套用到表單」進入檢核與加工
           </li>
         </ul>
       </div>

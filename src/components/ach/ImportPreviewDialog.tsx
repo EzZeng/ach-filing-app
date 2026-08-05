@@ -209,7 +209,7 @@ export function ImportPreviewDialog({
               {result.filterActive && (
                 <span className="badge badge-ok gap-1">
                   <Filter className="size-3" />
-                  已預先篩選
+                  已套用篩選
                 </span>
               )}
             </div>

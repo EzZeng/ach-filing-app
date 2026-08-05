@@ -117,10 +117,7 @@ export function PartitionToolsDialog({
     setBusy(true);
     setProgress(null);
     try {
-      let y = Math.min(
-        Math.max(1, Math.floor(partCount)),
-        PARTITION_LIMITS.maxPartCount,
-      );
+      let y = Math.max(1, Math.floor(partCount));
       if (openForEdit) {
         const plan = planPartitionsForEdit(detailCount || 1, y);
         if (plan.autoRaised) {
@@ -386,14 +383,13 @@ export function PartitionToolsDialog({
                 {detailCount > 0
                   ? ` · ${detailCount.toLocaleString("zh-TW")} 筆`
                   : ""}
-                。最多 {PARTITION_LIMITS.maxPartCount} 檔。
+                。分割檔數無上限（至多等於明細筆數）。
               </p>
               <label className="block space-y-1">
                 <span className="text-xs font-medium">分割檔數 y</span>
                 <input
                   type="number"
                   min={1}
-                  max={PARTITION_LIMITS.maxPartCount}
                   className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
                   value={partCount}
                   onChange={(e) =>
@@ -404,7 +400,7 @@ export function PartitionToolsDialog({
                 <span className="block text-[11px] text-muted">
                   建議至少 {suggested.partCount || 1} 包（每包 ≤{" "}
                   {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")}{" "}
-                  筆才能在網頁編輯）
+                  筆才能在網頁編輯）；檔數不設上限
                 </span>
               </label>
               <label className="flex items-start gap-2 text-xs">

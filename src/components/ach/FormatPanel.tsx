@@ -65,6 +65,7 @@ import { CodePicker } from "./CodePicker";
 import {
   ControlHeaderFields,
   ControlTrailerFields,
+  ProposerFieldsTable,
   proposerFormFields,
 } from "./ControlRecords";
 import { ConvertR01Dialog } from "./ConvertR01Dialog";
@@ -841,135 +842,8 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
         </div>
 
-        <div className="mb-4 space-y-4">
-          <div>
-            <h3 className="mb-1 text-sm font-bold text-fg">控制首錄</h3>
-            <p className="mb-2 text-xs text-muted">
-              對照財金控制首錄欄位名稱與值（不含長度／起迄）；可編輯處理日期等來源欄。
-            </p>
-            <ControlHeaderFields
-              schema={schema}
-              header={header}
-              branches={branches}
-              edit={{
-                header,
-                errors: headerErrs,
-                onChange: (key, value) =>
-                  setHeaderT(schema.code, schema, key, value),
-                onBlur: onHeaderBlur,
-                fieldMeta,
-                selectOptions,
-                onPick: (mode, key) =>
-                  setPicker({ mode, target: "header", key }),
-              }}
-            />
-          </div>
-
-          <div>
-            <h3 className="mb-1 text-sm font-bold text-fg">提出／發動者資料</h3>
-            <p className="mb-2 text-xs text-muted">
-              寫入明細錄與發送單位推算；非控制首錄本身欄位。
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {proposerFormFields(schema).map((field) => {
-                const err = headerErrs[field.key];
-                const meta = fieldMeta(field);
-                return (
-                  <div key={field.key}>
-                    <label
-                      className="field-label"
-                      htmlFor={`${schema.code}-${field.key}`}
-                    >
-                      {field.label}
-                    </label>
-                    {field.inputType === "select" ? (
-                      <select
-                        id={`${schema.code}-${field.key}`}
-                        className={`field-input ${err ? "err" : "warn"}`}
-                        value={header[field.key] ?? ""}
-                        onChange={(e) =>
-                          setHeaderT(schema.code, schema, field.key, e.target.value)
-                        }
-                      >
-                        {selectOptions(field).map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="flex gap-1">
-                        <input
-                          id={`${schema.code}-${field.key}`}
-                          className={`field-input ${field.ui?.mono ? "font-mono" : ""} ${err ? "err" : "warn"}`}
-                          value={header[field.key] ?? ""}
-                          maxLength={field.length || undefined}
-                          placeholder={field.placeholder}
-                          onChange={(e) =>
-                            setHeaderT(
-                              schema.code,
-                              schema,
-                              field.key,
-                              e.target.value,
-                            )
-                          }
-                          onBlur={() => onHeaderBlur(field)}
-                        />
-                        {field.picker && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary px-2"
-                            onClick={() =>
-                              setPicker({
-                                mode: field.picker!,
-                                target: "header",
-                                key: field.key,
-                              })
-                            }
-                            aria-label={`搜尋${field.label}`}
-                          >
-                            <Search className="size-4" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    <div className={err ? "field-hint" : "field-meta"}>
-                      {err || meta || "\u00a0"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="mb-1 text-sm font-bold text-fg">控制尾錄</h3>
-            <p className="mb-2 text-xs text-muted">
-              對照財金控制尾錄；總筆數／總金額依明細自動計算，前一營業日於提回檔可編輯。
-            </p>
-            <ControlTrailerFields
-              schema={schema}
-              header={header}
-              branches={branches}
-              totalCount={stats.count}
-              totalAmount={stats.amount}
-              edit={{
-                header,
-                errors: headerErrs,
-                onChange: (key, value) =>
-                  setHeaderT(schema.code, schema, key, value),
-                onBlur: onHeaderBlur,
-                fieldMeta,
-                selectOptions,
-                onPick: (mode, key) =>
-                  setPicker({ mode, target: "header", key }),
-              }}
-            />
-          </div>
-        </div>
-
         {/* 成品輸出／加工 */}
-        <div className="mt-4 rounded-lg border border-border bg-surface-2/70 p-3">
+        <div className="rounded-lg border border-border bg-surface-2/70 p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <FileDown className="size-4 text-primary" />
             <span className="text-sm font-semibold">檢核後產出</span>
@@ -1099,6 +973,84 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="font-bold">控制首錄</h3>
+          <p className="text-xs text-muted">
+            對照財金控制首錄欄位名稱與值（不含長度／起迄）；可編輯處理日期等來源欄。
+          </p>
+        </div>
+        <ControlHeaderFields
+          schema={schema}
+          header={header}
+          branches={branches}
+          edit={{
+            header,
+            errors: headerErrs,
+            onChange: (key, value) =>
+              setHeaderT(schema.code, schema, key, value),
+            onBlur: onHeaderBlur,
+            fieldMeta,
+            selectOptions,
+            onPick: (mode, key) =>
+              setPicker({ mode, target: "header", key }),
+          }}
+        />
+      </div>
+
+      {proposerFormFields(schema).length > 0 ? (
+        <div className="card overflow-hidden">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="font-bold">提出／發動者資料</h3>
+            <p className="text-xs text-muted">
+              寫入明細錄與發送單位推算；非控制首錄本身欄位。
+            </p>
+          </div>
+          <ProposerFieldsTable
+            schema={schema}
+            header={header}
+            edit={{
+              header,
+              errors: headerErrs,
+              onChange: (key, value) =>
+                setHeaderT(schema.code, schema, key, value),
+              onBlur: onHeaderBlur,
+              fieldMeta,
+              selectOptions,
+              onPick: (mode, key) =>
+                setPicker({ mode, target: "header", key }),
+            }}
+          />
+        </div>
+      ) : null}
+
+      <div className="card overflow-hidden">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="font-bold">控制尾錄</h3>
+          <p className="text-xs text-muted">
+            對照財金控制尾錄；總筆數／總金額依明細自動計算，前一營業日於提回檔可編輯。
+          </p>
+        </div>
+        <ControlTrailerFields
+          schema={schema}
+          header={header}
+          branches={branches}
+          totalCount={stats.count}
+          totalAmount={stats.amount}
+          edit={{
+            header,
+            errors: headerErrs,
+            onChange: (key, value) =>
+              setHeaderT(schema.code, schema, key, value),
+            onBlur: onHeaderBlur,
+            fieldMeta,
+            selectOptions,
+            onPick: (mode, key) =>
+              setPicker({ mode, target: "header", key }),
+          }}
+        />
       </div>
 
       <div className="card overflow-hidden">

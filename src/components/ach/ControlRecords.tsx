@@ -1,4 +1,5 @@
 import { Search } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
   Branch,
   FormatSchema,
@@ -47,7 +48,7 @@ export function controlHeaderDisplayValue(
     case "TDATE":
       return header.date ?? "";
     case "TTIME":
-      return "（產生時 HHMMSS）";
+      return "（產生時）";
     case "SORG":
       return resolveSorg(header.bankCode ?? "", branches) || "—";
     case "RORG":
@@ -64,7 +65,7 @@ export function controlHeaderDisplayValue(
       if (field.fn === "sorg") {
         return resolveSorg(header.bankCode ?? "", branches) || "—";
       }
-      if (field.fn === "nowHms") return "（產生時 HHMMSS）";
+      if (field.fn === "nowHms") return "（產生時）";
       return "—";
   }
 }
@@ -121,89 +122,133 @@ type EditHandlers = {
   onPick?: (mode: "txid" | "branch", key: string) => void;
 };
 
-function EditableFormValue({
+function CellEditable({
   formField,
   value,
   error,
-  meta,
   selectOptions,
   onChange,
   onBlur,
   onPick,
-  idPrefix,
 }: {
   formField: FormFieldDef;
   value: string;
   error?: string | null;
-  meta?: string;
   selectOptions?: { value: string; label: string }[];
   onChange: (value: string) => void;
   onBlur: () => void;
   onPick?: (mode: "txid" | "branch") => void;
-  idPrefix: string;
 }) {
-  const inputId = `${idPrefix}-${formField.key}`;
   if (formField.inputType === "select") {
     return (
-      <>
-        <select
-          id={inputId}
-          className={`field-input ${error ? "err" : "warn"}`}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {(selectOptions ?? []).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <div className={error ? "field-hint" : "field-meta"}>
-          {error || meta || "\u00a0"}
-        </div>
-      </>
+      <select
+        className={`cell-input ${error ? "err" : ""}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+      >
+        {(selectOptions ?? []).map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     );
   }
   return (
-    <>
-      <div className="flex gap-1">
-        <input
-          id={inputId}
-          className={`field-input ${formField.ui?.mono ? "font-mono" : ""} ${error ? "err" : "warn"}`}
-          value={value}
-          maxLength={formField.length || undefined}
-          placeholder={formField.placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-        />
-        {formField.picker && onPick ? (
-          <button
-            type="button"
-            className="btn btn-secondary px-2"
-            onClick={() => onPick(formField.picker!)}
-            aria-label={`搜尋${formField.label}`}
-          >
-            <Search className="size-4" />
-          </button>
-        ) : null}
-      </div>
-      <div className={error ? "field-hint" : "field-meta"}>
-        {error || meta || "\u00a0"}
-      </div>
-    </>
+    <div className="flex gap-0.5">
+      <input
+        className={`cell-input ${error ? "err" : ""}`}
+        value={value}
+        maxLength={formField.length || undefined}
+        placeholder={formField.placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+      />
+      {formField.picker && onPick ? (
+        <button
+          type="button"
+          className="btn btn-ghost px-1 py-0"
+          onClick={() => onPick(formField.picker!)}
+          aria-label={`搜尋${formField.label}`}
+        >
+          <Search className="size-3.5" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
-function ReadonlyValue({ value, hint }: { value: string; hint?: string }) {
+function CellReadonly({ value }: { value: string }) {
   return (
-    <>
-      <div className="field-input font-mono bg-surface-2">{value || "—"}</div>
-      {hint ? <div className="field-meta">{hint}</div> : null}
-    </>
+    <span className="block px-1 py-1 font-mono text-[0.8rem] text-fg">
+      {value || "—"}
+    </span>
   );
 }
 
-/** 控制首錄：欄位名稱＋值（可編輯來源欄；不含長度／起迄） */
+function ControlRecordTable({
+  columns,
+  errorRow,
+  metaRow,
+}: {
+  columns: {
+    key: string;
+    label: string;
+    minWidth?: string;
+    cell: ReactNode;
+  }[];
+  errorRow?: (string | null | undefined)[];
+  metaRow?: (string | null | undefined)[];
+}) {
+  const hasError = errorRow?.some(Boolean);
+  const hasMeta = metaRow?.some(Boolean);
+  return (
+    <div className="scroll-panel border-0 rounded-none">
+      <table className="data-table">
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c.key} style={c.minWidth ? { minWidth: c.minWidth } : undefined}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr className={hasError ? "has-error" : undefined}>
+            {columns.map((c) => (
+              <td key={c.key}>{c.cell}</td>
+            ))}
+          </tr>
+          {hasError ? (
+            <tr className="has-error">
+              {columns.map((c, i) => (
+                <td
+                  key={`err-${c.key}`}
+                  className="whitespace-pre-line text-xs font-semibold text-danger"
+                >
+                  {errorRow?.[i] || ""}
+                </td>
+              ))}
+            </tr>
+          ) : null}
+          {hasMeta && !hasError ? (
+            <tr>
+              {columns.map((c, i) => (
+                <td key={`meta-${c.key}`} className="text-xs text-muted">
+                  {metaRow?.[i] || ""}
+                </td>
+              ))}
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 控制首錄：與明細相同的橫向 data-table 排版 */
 export function ControlHeaderFields({
   schema,
   header,
@@ -216,62 +261,61 @@ export function ControlHeaderFields({
   edit?: EditHandlers;
 }) {
   const fields = schema.records.header.fields.filter((f) => f.id !== "FILLER");
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {fields.map((f) => {
-        const formField =
-          f.source === "header" ? formFieldByKey(schema, f.key) : undefined;
-        const label = f.label || f.id;
-        const canEdit = Boolean(edit && formField);
+  const columns = fields.map((f) => {
+    const formField =
+      f.source === "header" ? formFieldByKey(schema, f.key) : undefined;
+    const canEdit = Boolean(edit && formField);
+    return {
+      key: f.id,
+      label: f.label || f.id,
+      minWidth: "6.5rem",
+      cell:
+        canEdit && formField && edit ? (
+          <CellEditable
+            formField={formField}
+            value={header[formField.key] ?? ""}
+            error={edit.errors?.[formField.key]}
+            selectOptions={edit.selectOptions?.(formField)}
+            onChange={(v) => edit.onChange(formField.key, v)}
+            onBlur={() => edit.onBlur(formField)}
+            onPick={
+              formField.picker && edit.onPick
+                ? (mode) => edit.onPick!(mode, formField.key)
+                : undefined
+            }
+          />
+        ) : (
+          <CellReadonly
+            value={controlHeaderDisplayValue(f, schema, header, branches)}
+          />
+        ),
+    };
+  });
 
-        return (
-          <div key={f.id}>
-            <label
-              className="field-label"
-              htmlFor={
-                canEdit && formField
-                  ? `${schema.code}-ctrl-h-${formField.key}`
-                  : undefined
-              }
-            >
-              {label}
-            </label>
-            {canEdit && formField && edit ? (
-              <EditableFormValue
-                formField={formField}
-                value={header[formField.key] ?? ""}
-                error={edit.errors?.[formField.key]}
-                meta={edit.fieldMeta?.(formField)}
-                selectOptions={edit.selectOptions?.(formField)}
-                onChange={(v) => edit.onChange(formField.key, v)}
-                onBlur={() => edit.onBlur(formField)}
-                onPick={
-                  formField.picker && edit.onPick
-                    ? (mode) => edit.onPick!(mode, formField.key)
-                    : undefined
-                }
-                idPrefix={`${schema.code}-ctrl-h`}
-              />
-            ) : (
-              <ReadonlyValue
-                value={controlHeaderDisplayValue(f, schema, header, branches)}
-                hint={
-                  f.fn === "sorg" || f.id === "SORG"
-                    ? "由銀行代號推算代表行"
-                    : f.fn === "nowHms" || f.id === "TTIME"
-                      ? "產生檔時自動填入"
-                      : undefined
-                }
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
+  const errorRow = fields.map((f) => {
+    if (f.source !== "header" || !f.key || !edit) return null;
+    return edit.errors?.[f.key] ?? null;
+  });
+  const metaRow = fields.map((f) => {
+    if (f.fn === "sorg" || f.id === "SORG") return "由銀行代號推算";
+    if (f.fn === "nowHms" || f.id === "TTIME") return "產生時自動填入";
+    if (f.source === "header" && f.key && edit) {
+      const ff = formFieldByKey(schema, f.key);
+      return ff ? edit.fieldMeta?.(ff) ?? null : null;
+    }
+    return null;
+  });
+
+  return (
+    <ControlRecordTable
+      columns={columns}
+      errorRow={errorRow}
+      metaRow={metaRow}
+    />
   );
 }
 
-/** 控制尾錄：欄位名稱＋值（YDATE 等可編輯；總筆數／金額自動） */
+/** 控制尾錄：與明細相同的橫向 data-table 排版 */
 export function ControlTrailerFields({
   schema,
   header,
@@ -288,68 +332,112 @@ export function ControlTrailerFields({
   edit?: EditHandlers;
 }) {
   const fields = schema.records.trailer.fields.filter((f) => f.id !== "FILLER");
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {fields.map((f) => {
-        const formField =
-          f.source === "header" ? formFieldByKey(schema, f.key) : undefined;
-        const label = f.label || f.id;
-        const canEdit = Boolean(edit && formField);
-
-        return (
-          <div key={f.id}>
-            <label
-              className="field-label"
-              htmlFor={
-                canEdit && formField
-                  ? `${schema.code}-ctrl-t-${formField.key}`
-                  : undefined
-              }
-            >
-              {label}
-            </label>
-            {canEdit && formField && edit ? (
-              <EditableFormValue
-                formField={formField}
-                value={header[formField.key] ?? ""}
-                error={edit.errors?.[formField.key]}
-                meta={edit.fieldMeta?.(formField)}
-                selectOptions={edit.selectOptions?.(formField)}
-                onChange={(v) => edit.onChange(formField.key, v)}
-                onBlur={() => edit.onBlur(formField)}
-                onPick={
-                  formField.picker && edit.onPick
-                    ? (mode) => edit.onPick!(mode, formField.key)
-                    : undefined
-                }
-                idPrefix={`${schema.code}-ctrl-t`}
-              />
-            ) : (
-              <ReadonlyValue
-                value={controlTrailerDisplayValue(
-                  f,
-                  schema,
-                  header,
-                  branches,
-                  totalCount,
-                  totalAmount,
-                )}
-                hint={
-                  f.fn === "totalCount" || f.id === "TCOUNT"
-                    ? "依明細自動計算"
-                    : f.fn === "totalAmount" || f.id === "TAMT"
-                      ? "依明細自動計算"
-                      : f.id === "YDATE" && f.source === "filler"
-                        ? "提出檔空白"
-                        : f.fn === "sorg" || f.id === "SORG"
-                          ? "由銀行代號推算代表行"
-                          : undefined
-                }
-              />
+  const columns = fields.map((f) => {
+    const formField =
+      f.source === "header" ? formFieldByKey(schema, f.key) : undefined;
+    const canEdit = Boolean(edit && formField);
+    return {
+      key: f.id,
+      label: f.label || f.id,
+      minWidth:
+        f.id === "TAMT" ? "7rem" : f.id === "YDATE" ? "7.5rem" : "6.5rem",
+      cell:
+        canEdit && formField && edit ? (
+          <CellEditable
+            formField={formField}
+            value={header[formField.key] ?? ""}
+            error={edit.errors?.[formField.key]}
+            selectOptions={edit.selectOptions?.(formField)}
+            onChange={(v) => edit.onChange(formField.key, v)}
+            onBlur={() => edit.onBlur(formField)}
+            onPick={
+              formField.picker && edit.onPick
+                ? (mode) => edit.onPick!(mode, formField.key)
+                : undefined
+            }
+          />
+        ) : (
+          <CellReadonly
+            value={controlTrailerDisplayValue(
+              f,
+              schema,
+              header,
+              branches,
+              totalCount,
+              totalAmount,
             )}
-          </div>
-        );
-      })}
-    </div>
+          />
+        ),
+    };
+  });
+
+  const errorRow = fields.map((f) => {
+    if (f.source !== "header" || !f.key || !edit) return null;
+    return edit.errors?.[f.key] ?? null;
+  });
+  const metaRow = fields.map((f) => {
+    if (f.fn === "totalCount" || f.id === "TCOUNT") return "依明細自動計算";
+    if (f.fn === "totalAmount" || f.id === "TAMT") return "依明細自動計算";
+    if (f.id === "YDATE" && f.source === "filler") return "提出檔空白";
+    if (f.fn === "sorg" || f.id === "SORG") return "由銀行代號推算";
+    if (f.source === "header" && f.key && edit) {
+      const ff = formFieldByKey(schema, f.key);
+      return ff ? edit.fieldMeta?.(ff) ?? null : null;
+    }
+    return null;
+  });
+
+  return (
+    <ControlRecordTable
+      columns={columns}
+      errorRow={errorRow}
+      metaRow={metaRow}
+    />
+  );
+}
+
+/** 提出／發動者資料：與明細相同的橫向 data-table 排版 */
+export function ProposerFieldsTable({
+  schema,
+  header,
+  edit,
+}: {
+  schema: FormatSchema;
+  header: Record<string, string>;
+  edit: EditHandlers;
+}) {
+  const fields = proposerFormFields(schema);
+  if (fields.length === 0) return null;
+
+  const columns = fields.map((field) => ({
+    key: field.key,
+    label: field.label,
+    minWidth: field.ui?.minWidth ?? "7rem",
+    cell: (
+      <CellEditable
+        formField={field}
+        value={header[field.key] ?? ""}
+        error={edit.errors?.[field.key]}
+        selectOptions={edit.selectOptions?.(field)}
+        onChange={(v) => edit.onChange(field.key, v)}
+        onBlur={() => edit.onBlur(field)}
+        onPick={
+          field.picker && edit.onPick
+            ? (mode) => edit.onPick!(mode, field.key)
+            : undefined
+        }
+      />
+    ),
+  }));
+
+  const errorRow = fields.map((f) => edit.errors?.[f.key] ?? null);
+  const metaRow = fields.map((f) => edit.fieldMeta?.(f) ?? null);
+
+  return (
+    <ControlRecordTable
+      columns={columns}
+      errorRow={errorRow}
+      metaRow={metaRow}
+    />
   );
 }

@@ -645,11 +645,13 @@ function FormPreview({
 
   return (
     <div className="space-y-4">
-      <section>
-        <h4 className="mb-1 text-sm font-bold">控制首錄</h4>
-        <p className="mb-2 text-xs text-muted">
-          對照財金控制首錄欄位名稱與值（不含長度／起迄）
-        </p>
+      <section className="overflow-hidden rounded-lg border border-border">
+        <div className="border-b border-border px-4 py-3">
+          <h4 className="font-bold">控制首錄</h4>
+          <p className="text-xs text-muted">
+            對照財金控制首錄欄位名稱與值（不含長度／起迄）
+          </p>
+        </div>
         <ControlHeaderFields
           schema={schema}
           header={result.header}
@@ -658,28 +660,37 @@ function FormPreview({
       </section>
 
       {proposer.length > 0 ? (
-        <section>
-          <h4 className="mb-1 text-sm font-bold">提出／發動者資料</h4>
-          <p className="mb-2 text-xs text-muted">
-            匯入後可於表單編輯（寫入明細錄）
-          </p>
-          <div className="overflow-x-auto rounded-lg border border-border">
+        <section className="overflow-hidden rounded-lg border border-border">
+          <div className="border-b border-border px-4 py-3">
+            <h4 className="font-bold">提出／發動者資料</h4>
+            <p className="text-xs text-muted">
+              匯入後可於表單編輯（寫入明細錄）
+            </p>
+          </div>
+          <div className="scroll-panel border-0 rounded-none">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>欄位</th>
-                  <th>值</th>
-                  <th>說明</th>
+                  {proposer.map((f) => (
+                    <th key={f.key}>{f.label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {proposer.map((f) => (
-                  <tr key={f.key}>
-                    <td className="whitespace-nowrap">{f.label}</td>
-                    <td className="font-mono">{result.header[f.key] || "—"}</td>
-                    <td className="text-muted">{formNotes[f.key] || ""}</td>
-                  </tr>
-                ))}
+                <tr>
+                  {proposer.map((f) => (
+                    <td key={f.key} className="font-mono">
+                      {result.header[f.key] || "—"}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  {proposer.map((f) => (
+                    <td key={`n-${f.key}`} className="text-xs text-muted">
+                      {formNotes[f.key] || ""}
+                    </td>
+                  ))}
+                </tr>
               </tbody>
             </table>
           </div>
@@ -741,11 +752,13 @@ function FormPreview({
         </div>
       </section>
 
-      <section>
-        <h4 className="mb-1 text-sm font-bold">控制尾錄</h4>
-        <p className="mb-2 text-xs text-muted">
-          對照財金控制尾錄；總筆數／總金額依明細彙總
-        </p>
+      <section className="overflow-hidden rounded-lg border border-border">
+        <div className="border-b border-border px-4 py-3">
+          <h4 className="font-bold">控制尾錄</h4>
+          <p className="text-xs text-muted">
+            對照財金控制尾錄；總筆數／總金額依明細彙總
+          </p>
+        </div>
         <ControlTrailerFields
           schema={schema}
           header={result.header}

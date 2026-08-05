@@ -444,7 +444,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       setImportResult(result);
       if (result.tooLargeForForm) {
         toast.message(
-          `檔案 ${result.detailCount.toLocaleString("zh-TW")} 筆：請先預先篩選欄位後再載入符合結果`,
+          `檔案 ${result.detailCount.toLocaleString("zh-TW")} 筆：請於明細表頭篩選後載入符合結果`,
         );
       }
     } catch (e) {
@@ -498,7 +498,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   async function applyImport(result: ImportResult) {
     if (result.tooLargeForForm) {
-      toast.error("筆數仍超過上限，請先預先篩選");
+      toast.error("筆數仍超過上限，請再縮小表頭篩選條件");
       return;
     }
     loadFromImport(

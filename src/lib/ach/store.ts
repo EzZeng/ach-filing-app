@@ -366,11 +366,25 @@ export const useFormStore = create<FormState>()(
     }),
     {
       name: "ach-filing-forms-v2",
-      partialize: (s) => ({
-        activeCode: s.activeCode,
-        forms: s.forms,
-        workspaces: s.workspaces,
-      }),
+      partialize: (s) => {
+        // 大量明細勿寫入 localStorage（易超額／卡住）；僅保留提出資料與工作區狀態
+        const MAX_PERSIST_ROWS = 200;
+        const forms: FormState["forms"] = {};
+        for (const [code, form] of Object.entries(s.forms)) {
+          forms[code] =
+            form.rows.length > MAX_PERSIST_ROWS
+              ? {
+                  header: form.header,
+                  rows: form.rows.slice(0, 15),
+                }
+              : form;
+        }
+        return {
+          activeCode: s.activeCode,
+          forms,
+          workspaces: s.workspaces,
+        };
+      },
     },
   ),
 );

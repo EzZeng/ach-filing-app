@@ -3,7 +3,7 @@
 ## Cursor Cloud specific instructions
 
 ### What this repo is
-`ach-filing-app` (代收建檔小程式) is a **client-only** React 19 + Vite 8 + TypeScript app that generates Taiwan 財金 ACH fixed-length upload files (ACHP01 代收 / ACHP02 授權建檔). There is **no backend, database, or auth**. The `better-auth`, `kysely`, `pg`, and `@electric-sql/pglite` dependencies are unused template leftovers (their source lives under gitignored paths) — do not try to run a DB/auth server. All reference data (bank branches, txids, format schemas) is embedded/served from `public/data/` and `src/data/embedded.ts`.
+`ach-filing-app` (代收建檔小程式) is a **client-only** React 19 + Vite 8 + TypeScript app that generates Taiwan 財金 ACH fixed-length upload files (ACHP01 代收 SD／代付 SC / ACHP02 授權建檔). There is **no backend, database, or auth**. The `better-auth`, `kysely`, `pg`, and `@electric-sql/pglite` dependencies are unused template leftovers (their source lives under gitignored paths) — do not try to run a DB/auth server. All reference data (bank branches, txids, format schemas) is embedded/served from `public/data/` and `src/data/embedded.ts`.
 
 ### Running it (dev)
 - Primary dev server: `npm run dev:web` → http://localhost:8080 (config `vite.static.config.ts`, `strictPort: true`, so 8080 must be free). This is the path the README and `startup.sh` use.
@@ -25,7 +25,9 @@
 
 ### Non-obvious gotchas when testing file generation
 - The detail-row **收受者帳號 (account)** must be exactly **16 digits**. The export `RCLNO` field has `pad: none`, so a shorter account produces a record shorter than `recordLength` (e.g. 244 vs 250) and generation fails with a red toast "…列長度 244 與定義 250 不符…". The account input pads left with `0` on blur, so enter a 16-digit value (e.g. `0000001234567890`).
-- **用戶號碼 (userNo)** is a required detail field; leaving it blank blocks generation.
+- **用戶號碼 (userNo)** is required on detail rows when the header txid is **代收 SD**; for **代付 SC** it may be blank (exported as spaces, matching 代付建檔小程式).
 - The header **日期 (rocDate)** must not be in the past (ROC format, e.g. `01150804` = 2026-08-04).
 - Bank codes (header `bankCode` and detail `bankCode`) must match a code in `public/data/branch.json` (e.g. `0040000` = 台灣銀行).
+- ACHP01 **TXTYPE** is derived from `txid.json`: **SD＝代收**, **SC＝代付**. Header/trailer layout matches 財金「代收建檔小程式.xlsm」.
+- Large ACH uploads use **streaming parse** (`parseAchFile`); do not call `file.text()` on big files. Editable form apply is capped at **5,000** detail rows (`IMPORT_LIMITS.maxFormDetailRows`). Larger files: use import-preview **預先篩選** (`filters` / `filterGlobal` on `parseAchFile`) to stream-load only matching rows, then display all matches and apply.
 - Form state persists in `localStorage` under key `ach-filing-forms-v1` (Zustand persist). To prefill deterministically during manual testing you can seed this key and reload; a successful export shows a green toast "已產生 …txt（N 筆）" and downloads the file.

@@ -19,6 +19,13 @@ export function lookupBranch(code: string, branches: Branch[]): Branch | undefin
   return branches.find((b) => b.code === code);
 }
 
+/** 交易類別顯示：SD＝代收、SC＝代付（對照財金建檔小程式） */
+export function formatTxTypeLabel(type: string): string {
+  if (type === "SD") return "代收 SD";
+  if (type === "SC") return "代付 SC";
+  return type;
+}
+
 export function resolveSorg(bankCode: string, branches: Branch[]): string {
   if (bankCode.startsWith("822")) return "8220901";
   const b = lookupBranch(bankCode, branches);
@@ -60,11 +67,22 @@ export function isRowEmpty(row: DetailRow, schema: FormatSchema): boolean {
   return schema.form.detail.every((f) => !String(row[f.key] ?? "").trim());
 }
 
+function rowHasOtherValues(
+  schema: FormatSchema,
+  row: DetailRow,
+  exceptKey: string,
+): boolean {
+  return schema.form.detail.some(
+    (f) => f.key !== exceptKey && String(row[f.key] ?? "").trim(),
+  );
+}
+
 export function runRule(
   rule: ValidationRule,
   value: string,
   ctx: {
     row?: DetailRow;
+    header?: HeaderValues;
     schema: FormatSchema;
     section: "header" | "detail";
     field: FormFieldDef;
@@ -81,10 +99,19 @@ export function runRule(
     case "requiredIfAny": {
       if (v) return null;
       if (!ctx.row) return null;
-      const any = ctx.schema.form.detail.some(
-        (f) => f.key !== ctx.field.key && String(ctx.row![f.key] ?? "").trim(),
-      );
-      if (any) return rule.message ?? `${ctx.field.label}未輸入`;
+      if (rowHasOtherValues(ctx.schema, ctx.row, ctx.field.key)) {
+        return rule.message ?? `${ctx.field.label}未輸入`;
+      }
+      return null;
+    }
+    case "requiredIfTxType": {
+      if (v) return null;
+      if (!ctx.row) return null;
+      const txType = lookupTxid(ctx.header?.txid ?? "", ctx.txids)?.type ?? "";
+      if (!rule.txTypes.includes(txType as "SD" | "SC")) return null;
+      if (rowHasOtherValues(ctx.schema, ctx.row, ctx.field.key)) {
+        return rule.message ?? `${ctx.field.label}未輸入`;
+      }
       return null;
     }
     case "exactLength":
@@ -113,6 +140,11 @@ export function runRule(
       if (!found) return rule.message ?? "交易代號錯誤";
       if (rule.minValue != null && Number(v) < rule.minValue) {
         return rule.message ?? "交易代號錯誤";
+      }
+      if (rule.txTypes && rule.txTypes.length > 0) {
+        if (!rule.txTypes.includes(found.type as "SD" | "SC")) {
+          return rule.message ?? "交易代號錯誤";
+        }
       }
       return null;
     }
@@ -148,6 +180,7 @@ export function validateField(
   value: string,
   ctx: {
     row?: DetailRow;
+    header?: HeaderValues;
     schema: FormatSchema;
     section: "header" | "detail";
     txids: Txid[];
@@ -172,6 +205,7 @@ export function validateHeader(
   for (const f of schema.form.header) {
     out[f.key] = validateField(f, header[f.key] ?? "", {
       schema,
+      header,
       section: "header",
       txids,
       branches,
@@ -189,6 +223,7 @@ export function validateDetailRow(
   row: DetailRow,
   txids: Txid[],
   branches: Branch[],
+  header?: HeaderValues,
 ): Record<string, string | null> {
   const out: Record<string, string | null> = {};
   if (isRowEmpty(row, schema)) {
@@ -198,6 +233,7 @@ export function validateDetailRow(
   for (const f of schema.form.detail) {
     out[f.key] = validateField(f, row[f.key] ?? "", {
       row,
+      header,
       schema,
       section: "detail",
       txids,

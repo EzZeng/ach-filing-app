@@ -6,9 +6,17 @@
     {
       "code": "ACHP01",
       "shortCode": "P01",
-      "name": "代收交易檔",
-      "description": "提出代收（扣款）交易明細",
+      "name": "代收／代付交易檔",
+      "description": "提出代收（SD）或代付（SC）交易明細；控制首／尾錄對照財金建檔小程式",
       "schemaFile": "ACHP01.json",
+      "icon": "file-stack"
+    },
+    {
+      "code": "ACHR01",
+      "shortCode": "R01",
+      "name": "提回／退件檔",
+      "description": "ACHP01 提回／退件（TYPE=R）；可由 P01 轉檔產生",
+      "schemaFile": "ACHR01.json",
       "icon": "file-stack"
     },
     {

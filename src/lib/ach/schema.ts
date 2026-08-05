@@ -8,14 +8,29 @@ export type PadSpec = {
   onBlur?: boolean;
 };
 
+export type TxTypeCode = "SD" | "SC";
+
 export type ValidationRule =
   | { type: "required"; message?: string }
   | { type: "requiredIfAny"; message?: string }
+  | {
+      /** 僅當表頭交易代號對應類別符合時，比照 requiredIfAny（代收 SD／代付 SC） */
+      type: "requiredIfTxType";
+      txTypes: TxTypeCode[];
+      message?: string;
+    }
   | { type: "exactLength"; length: number; message?: string }
   | { type: "maxLength"; length: number; message?: string }
   | { type: "oneOfLengths"; lengths: number[]; message?: string }
   | { type: "rocDate"; notPast?: boolean; message?: string }
-  | { type: "txid"; minValue?: number; message?: string }
+  | {
+      type: "txid";
+      /** 代號數值下限（舊規則；ACHP02 代收類仍可用） */
+      minValue?: number;
+      /** 僅允許指定交易類別（SD 代收／SC 代付） */
+      txTypes?: TxTypeCode[];
+      message?: string;
+    }
   | { type: "branchCode"; message?: string }
   | { type: "number"; message?: string }
   | { type: "maxIntegerDigits"; length: number; message?: string };
@@ -65,6 +80,8 @@ export type RecordFieldSource =
 export type RecordFieldDef = {
   id: string;
   source: RecordFieldSource;
+  /** 財金規格／Excel 欄位中文名（如「首錄別」「處理日期」） */
+  label?: string;
   /** literal 值 */
   value?: string;
   /** header / detail 欄位 key */

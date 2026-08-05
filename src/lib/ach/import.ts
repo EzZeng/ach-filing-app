@@ -6,6 +6,37 @@ import type {
 } from "./schema";
 import { emptyDetailRow, emptyHeader } from "./engine";
 import { newRowId } from "./utils";
+import {
+  emptyDetailFilters,
+  hasActiveFilters,
+  rowMatchesFilters,
+  type DetailFilters,
+} from "./filter";
+
+/** 匯入記憶體／表單上限（超過則僅預覽＋檢核摘要，不載入可編輯表單） */
+export const IMPORT_LIMITS = {
+  /** 可套用到表單的最大明細筆數 */
+  maxFormDetailRows: 5_000,
+  /** 未篩選時預覽列數 */
+  maxPreviewDetailRows: 50,
+  /** 固定長度欄位預覽：明細樣本數 */
+  maxDetailLineSamples: 2,
+  /** 警告訊息筆數上限 */
+  maxWarningSamples: 40,
+  /** 進度回報最小間隔 ms */
+  progressIntervalMs: 80,
+} as const;
+
+export type ImportParseOptions = {
+  filename?: string;
+  fileSize?: number;
+  /** 明細欄位預先篩選（大檔：先篩再載入符合列） */
+  filters?: DetailFilters;
+  /** 全域關鍵字（任一可篩選欄位） */
+  filterGlobal?: string;
+  onProgress?: (p: ImportProgress) => void;
+  signal?: AbortSignal;
+};
 
 export type ParsedRecordField = {
   id: string;
@@ -25,17 +56,47 @@ export type ParsedLine = {
   fields: ParsedRecordField[];
 };
 
+export type ImportProgress = {
+  bytesRead: number;
+  totalBytes: number;
+  linesRead: number;
+  detailCount: number;
+  matchedCount: number;
+};
+
 export type ImportResult = {
   detectedCode: string | null;
   schema: FormatSchema;
   filename: string;
   header: HeaderValues;
+  /**
+   * 可套用到表單的完整明細。檔案過大（tooLargeForForm）時為空陣列。
+   * 有預先篩選時為「符合篩選」的全部列（未超上限時）。
+   */
   rows: DetailRow[];
+  /**
+   * 預覽用明細。
+   * 未篩選：最多 maxPreviewDetailRows。
+   * 已篩選：符合條件的全部列（最多 maxFormDetailRows，供確認後套用）。
+   */
+  previewRows: DetailRow[];
+  /** 固定長度預覽用列（首錄＋少量明細＋尾錄） */
   lines: ParsedLine[];
   trailer: Record<string, string>;
   warnings: string[];
   errors: string[];
+  /** 檔案內明細總筆數 */
   detailCount: number;
+  /** 符合篩選的筆數（未篩選時等於 detailCount） */
+  matchedCount: number;
+  lengthErrorCount: number;
+  /** 超過可編輯上限，不可套用到表單 */
+  tooLargeForForm: boolean;
+  /** 是否已套用預先篩選 */
+  filterActive: boolean;
+  appliedFilters: DetailFilters;
+  appliedGlobal: string;
+  fileSize: number;
 };
 
 function splitLines(text: string): string[] {
@@ -47,13 +108,18 @@ function splitLines(text: string): string[] {
     .filter((l, i, arr) => !(l === "" && i === arr.length - 1));
 }
 
-/** 從首筆 BOF 列的 CDATA（第 4–9 碼）偵測檔案代號 */
+/** 從首筆 BOF 列的 CDATA（第 4–9 碼）偵測檔案代號（僅掃前幾列） */
 export function detectFormatCode(text: string): string | null {
-  const lines = splitLines(text);
+  const lines = splitLines(text.slice(0, 2048));
   const header = lines.find((l) => l.startsWith("BOF"));
   if (!header || header.length < 9) return null;
   const code = header.slice(3, 9).trim();
   return code || null;
+}
+
+export async function detectFormatCodeFromFile(file: File): Promise<string | null> {
+  const head = await file.slice(0, 2048).text();
+  return detectFormatCode(head);
 }
 
 function unpadField(raw: string, def: RecordFieldDef): string {
@@ -68,10 +134,17 @@ function unpadField(raw: string, def: RecordFieldDef): string {
     s = s.replace(/[ \t]+$/g, "");
   }
 
-  if (def.transform === "floorInt" || (pad.side === "left" && (pad.char ?? "0") === "0")) {
+  if (
+    def.transform === "floorInt" ||
+    (pad.side === "left" && (pad.char ?? "0") === "0")
+  ) {
     const trimmed = s.replace(/^0+/, "");
-    // 金額／計數：前導零去掉；全零保留 "0"
-    if (def.transform === "floorInt" || def.fn === "totalCount" || def.fn === "totalAmount" || def.fn === "seq") {
+    if (
+      def.transform === "floorInt" ||
+      def.fn === "totalCount" ||
+      def.fn === "totalAmount" ||
+      def.fn === "seq"
+    ) {
       return trimmed === "" ? "0" : trimmed;
     }
   }
@@ -91,9 +164,7 @@ export function parseRecordFields(
   let offset = 0;
   for (const def of fields) {
     const raw =
-      offset >= line.length
-        ? ""
-        : line.slice(offset, offset + def.length);
+      offset >= line.length ? "" : line.slice(offset, offset + def.length);
     offset += def.length;
     out.push({
       id: def.id,
@@ -120,72 +191,142 @@ function collectKeyedValues(
   return out;
 }
 
-function classifyLine(
-  line: string,
-  index: number,
-  total: number,
-): "header" | "detail" | "trailer" | "unknown" {
-  if (line.startsWith("BOF")) return "header";
-  if (line.startsWith("EOF")) return "trailer";
-  if (index === 0) return "header";
-  if (index === total - 1) return "trailer";
-  if (line.trim()) return "detail";
-  return "unknown";
+function detailRowFromFields(
+  schema: FormatSchema,
+  fields: ParsedRecordField[],
+): DetailRow {
+  const values = collectKeyedValues(fields, "detail");
+  const row = emptyDetailRow(schema, newRowId());
+  for (const f of schema.form.detail) {
+    row[f.key] = values[f.key] ?? "";
+  }
+  return row;
+}
+
+function trailerFromFields(
+  fields: ParsedRecordField[],
+): Record<string, string> {
+  const trailer: Record<string, string> = {};
+  for (const f of fields) {
+    if (f.source === "derived" && f.id) {
+      trailer[f.id] = f.value;
+    } else if (f.source === "header" && f.key) {
+      trailer[f.key] = f.value;
+    } else {
+      trailer[f.id] = f.value;
+    }
+  }
+  return trailer;
+}
+
+function pushWarning(warnings: string[], msg: string): void {
+  if (warnings.length < IMPORT_LIMITS.maxWarningSamples) {
+    warnings.push(msg);
+  }
+}
+
+type ParseAcc = {
+  schema: FormatSchema;
+  warnings: string[];
+  errors: string[];
+  headerLine: ParsedLine | null;
+  trailerLine: ParsedLine | null;
+  detailSamples: ParsedLine[];
+  previewRows: DetailRow[];
+  rows: DetailRow[];
+  detailCount: number;
+  matchedCount: number;
+  lengthErrorCount: number;
+  tooLargeForForm: boolean;
+  collectingRows: boolean;
+  sawNonEmpty: boolean;
+  filterActive: boolean;
+  filters: DetailFilters;
+  filterGlobal: string;
+};
+
+function createAcc(
+  schema: FormatSchema,
+  opts?: { filters?: DetailFilters; filterGlobal?: string },
+): ParseAcc {
+  const filters = opts?.filters ?? emptyDetailFilters(schema);
+  const filterGlobal = opts?.filterGlobal ?? "";
+  const filterActive = hasActiveFilters(filters, { global: filterGlobal });
+  return {
+    schema,
+    warnings: [],
+    errors: [],
+    headerLine: null,
+    trailerLine: null,
+    detailSamples: [],
+    previewRows: [],
+    rows: [],
+    detailCount: 0,
+    matchedCount: 0,
+    lengthErrorCount: 0,
+    tooLargeForForm: false,
+    collectingRows: true,
+    sawNonEmpty: false,
+    filterActive,
+    filters,
+    filterGlobal,
+  };
+}
+
+function collectMatchedRow(acc: ParseAcc, row: DetailRow): void {
+  acc.matchedCount += 1;
+
+  // 篩選模式：預覽列出全部符合列（上限內）；未篩選：僅前 N 筆樣本
+  const previewCap = acc.filterActive
+    ? IMPORT_LIMITS.maxFormDetailRows
+    : IMPORT_LIMITS.maxPreviewDetailRows;
+  if (acc.previewRows.length < previewCap) {
+    acc.previewRows.push(row);
+  }
+
+  if (!acc.collectingRows) return;
+
+  if (acc.matchedCount <= IMPORT_LIMITS.maxFormDetailRows) {
+    acc.rows.push(row);
+  } else {
+    acc.tooLargeForForm = true;
+    acc.collectingRows = false;
+    acc.rows = [];
+  }
 }
 
 /**
- * 依 FormatSchema.records 將固定長度 ACH 文字檔解析為表單可用資料。
- * 表頭欄位優先取自 header 列，不足者由第一筆 detail 的 source=header 欄位補齊。
+ * 串流／逐行處理一列。
  */
-export function parseAchText(
-  text: string,
-  schema: FormatSchema,
-  opts?: { filename?: string },
-): ImportResult {
-  const warnings: string[] = [];
-  const errors: string[] = [];
-  const filename = opts?.filename ?? "";
-  const rawLines = splitLines(text);
+function consumeLine(acc: ParseAcc, raw: string, index: number): void {
+  if (!raw && !acc.sawNonEmpty) return;
+  if (raw) acc.sawNonEmpty = true;
 
-  if (!rawLines.length) {
-    errors.push("檔案沒有內容");
-    return {
-      detectedCode: null,
-      schema,
-      filename,
-      header: emptyHeader(schema),
-      rows: [],
-      lines: [],
-      trailer: {},
-      warnings,
-      errors,
-      detailCount: 0,
-    };
-  }
+  let kind: ParsedLine["kind"];
+  if (raw.startsWith("BOF")) kind = "header";
+  else if (raw.startsWith("EOF")) kind = "trailer";
+  else if (raw.trim()) kind = "detail";
+  else kind = "unknown";
 
-  const detectedCode = detectFormatCode(text);
-  if (detectedCode && detectedCode !== schema.code) {
-    warnings.push(
-      `檔案代號為 ${detectedCode}，目前以 ${schema.code} 格式解析`,
+  if (kind === "unknown") return;
+
+  const lengthOk = raw.length === acc.schema.recordLength;
+  if (!lengthOk) {
+    acc.lengthErrorCount += 1;
+    pushWarning(
+      acc.warnings,
+      `第 ${index + 1} 列（${kind}）長度 ${raw.length} ≠ 定義 ${acc.schema.recordLength}`,
     );
-  } else if (!detectedCode) {
-    warnings.push("無法從 BOF 列辨識檔案代號（CDATA）");
   }
 
-  const lines: ParsedLine[] = rawLines.map((raw, index) => {
-    const kind = classifyLine(raw, index, rawLines.length);
-    const section =
-      kind === "header" || kind === "detail" || kind === "trailer"
-        ? schema.records[kind].fields
-        : null;
+  const section =
+    kind === "header" || kind === "detail" || kind === "trailer"
+      ? acc.schema.records[kind].fields
+      : null;
+
+  if (kind === "header" || kind === "trailer") {
     const fields = section ? parseRecordFields(raw, section) : [];
-    const lengthOk = raw.length === schema.recordLength;
-    if (!lengthOk && kind !== "unknown") {
-      warnings.push(
-        `第 ${index + 1} 列（${kind}）長度 ${raw.length} ≠ 定義 ${schema.recordLength}`,
-      );
-    }
-    return {
+    const sample: ParsedLine = {
       index,
       kind,
       raw,
@@ -193,78 +334,307 @@ export function parseAchText(
       lengthOk,
       fields,
     };
-  });
-
-  const headerLine = lines.find((l) => l.kind === "header");
-  const detailLines = lines.filter((l) => l.kind === "detail");
-  const trailerLine = lines.find((l) => l.kind === "trailer");
-
-  if (!headerLine) {
-    errors.push("找不到表頭列（BOF）");
-  }
-  if (!trailerLine) {
-    warnings.push("找不到尾筆列（EOF）");
-  }
-  if (!detailLines.length) {
-    warnings.push("沒有明細列");
+    if (kind === "header") acc.headerLine = sample;
+    else acc.trailerLine = sample;
+    return;
   }
 
-  const header: HeaderValues = emptyHeader(schema);
-  if (headerLine) {
-    Object.assign(header, collectKeyedValues(headerLine.fields, "header"));
+  // detail
+  acc.detailCount += 1;
+
+  const needParse =
+    acc.filterActive ||
+    acc.previewRows.length < IMPORT_LIMITS.maxPreviewDetailRows ||
+    (acc.collectingRows &&
+      acc.matchedCount < IMPORT_LIMITS.maxFormDetailRows) ||
+    acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples;
+
+  if (!needParse) {
+    // 未篩選且已超過收集上限：只計數／列長，並丟掉已物化的 rows
+    if (
+      !acc.filterActive &&
+      acc.detailCount > IMPORT_LIMITS.maxFormDetailRows
+    ) {
+      acc.tooLargeForForm = true;
+      acc.collectingRows = false;
+      acc.rows = [];
+    }
+    return;
   }
-  // detail 列上的 source=header 欄位（如銀行代號、帳號、統編、交易代號）
-  if (detailLines[0]) {
-    const fromDetail = collectKeyedValues(detailLines[0].fields, "header");
+
+  const fields = section ? parseRecordFields(raw, section) : [];
+  if (acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples) {
+    acc.detailSamples.push({
+      index,
+      kind: "detail",
+      raw,
+      length: raw.length,
+      lengthOk,
+      fields,
+    });
+  }
+
+  const row = detailRowFromFields(acc.schema, fields);
+
+  if (acc.filterActive) {
+    if (
+      !rowMatchesFilters(row, {
+        schema: acc.schema,
+        filters: acc.filters,
+        options: { global: acc.filterGlobal },
+      })
+    ) {
+      return;
+    }
+  }
+
+  collectMatchedRow(acc, row);
+}
+
+function finalizeHeader(acc: ParseAcc): HeaderValues {
+  const header: HeaderValues = emptyHeader(acc.schema);
+  if (acc.headerLine) {
+    Object.assign(header, collectKeyedValues(acc.headerLine.fields, "header"));
+  }
+  if (acc.detailSamples[0]) {
+    const fromDetail = collectKeyedValues(
+      acc.detailSamples[0].fields,
+      "header",
+    );
     for (const [k, v] of Object.entries(fromDetail)) {
       if (!header[k]) header[k] = v;
     }
   }
 
-  // 僅保留 schema.form.header 定義的 key
-  const headerKeys = new Set(schema.form.header.map((f) => f.key));
+  const headerKeys = new Set(acc.schema.form.header.map((f) => f.key));
   for (const k of Object.keys(header)) {
     if (!headerKeys.has(k)) delete header[k];
   }
-  for (const f of schema.form.header) {
+  for (const f of acc.schema.form.header) {
     if (header[f.key] === undefined) header[f.key] = "";
   }
+  return header;
+}
 
-  const detailKeys = schema.form.detail.map((f) => f.key);
-  const rows: DetailRow[] = detailLines.map((line) => {
-    const values = collectKeyedValues(line.fields, "detail");
-    const row = emptyDetailRow(schema, newRowId());
-    for (const key of detailKeys) {
-      row[key] = values[key] ?? "";
+function buildResult(
+  acc: ParseAcc,
+  opts: { filename: string; detectedCode: string | null; fileSize: number },
+): ImportResult {
+  if (!acc.headerLine) {
+    acc.errors.push("找不到表頭列（BOF）");
+  }
+  if (!acc.trailerLine) {
+    pushWarning(acc.warnings, "找不到尾筆列（EOF）");
+  }
+  if (!acc.detailCount) {
+    pushWarning(acc.warnings, "沒有明細列");
+  }
+
+  const matchedCount = acc.filterActive ? acc.matchedCount : acc.detailCount;
+
+  if (acc.tooLargeForForm) {
+    if (acc.filterActive) {
+      pushWarning(
+        acc.warnings,
+        `符合篩選 ${matchedCount.toLocaleString("zh-TW")} 筆，仍超過可載入上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請再縮小篩選條件`,
+      );
+    } else {
+      pushWarning(
+        acc.warnings,
+        `明細共 ${acc.detailCount.toLocaleString("zh-TW")} 筆，超過可載入表單上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆；請先「預先篩選」欄位後再載入符合結果`,
+      );
     }
-    return row;
+  } else if (acc.filterActive) {
+    pushWarning(
+      acc.warnings,
+      `已套用預先篩選：符合 ${matchedCount.toLocaleString("zh-TW")}／總計 ${acc.detailCount.toLocaleString("zh-TW")} 筆，可套用到表單`,
+    );
+  }
+
+  if (acc.lengthErrorCount > IMPORT_LIMITS.maxWarningSamples) {
+    pushWarning(
+      acc.warnings,
+      `另有列長不符共 ${acc.lengthErrorCount.toLocaleString("zh-TW")} 筆（僅顯示前 ${IMPORT_LIMITS.maxWarningSamples} 則）`,
+    );
+  }
+
+  const lines: ParsedLine[] = [];
+  if (acc.headerLine) lines.push(acc.headerLine);
+  lines.push(...acc.detailSamples);
+  if (acc.trailerLine) lines.push(acc.trailerLine);
+
+  const trailer = acc.trailerLine
+    ? trailerFromFields(acc.trailerLine.fields)
+    : {};
+
+  return {
+    detectedCode: opts.detectedCode,
+    schema: acc.schema,
+    filename: opts.filename,
+    header: finalizeHeader(acc),
+    rows: acc.tooLargeForForm ? [] : acc.rows,
+    previewRows: acc.previewRows,
+    lines,
+    trailer,
+    warnings: acc.warnings,
+    errors: acc.errors,
+    detailCount: acc.detailCount,
+    matchedCount,
+    lengthErrorCount: acc.lengthErrorCount,
+    tooLargeForForm: acc.tooLargeForForm,
+    filterActive: acc.filterActive,
+    appliedFilters: { ...acc.filters },
+    appliedGlobal: acc.filterGlobal,
+    fileSize: opts.fileSize,
+  };
+}
+
+/**
+ * 小字串同步解析（測試／貼上）。大檔請用 parseAchFile 串流，避免 OOM。
+ */
+export function parseAchText(
+  text: string,
+  schema: FormatSchema,
+  opts?: ImportParseOptions,
+): ImportResult {
+  const filename = opts?.filename ?? "";
+  const fileSize = opts?.fileSize ?? text.length;
+  const detectedCode = detectFormatCode(text);
+  const acc = createAcc(schema, {
+    filters: opts?.filters,
+    filterGlobal: opts?.filterGlobal,
   });
 
-  const trailer: Record<string, string> = {};
-  if (trailerLine) {
-    for (const f of trailerLine.fields) {
-      if (f.source === "derived" && f.id) {
-        trailer[f.id] = f.value;
-      } else if (f.source === "header" && f.key) {
-        trailer[f.key] = f.value;
-      } else {
-        trailer[f.id] = f.value;
+  if (detectedCode && detectedCode !== schema.code) {
+    pushWarning(
+      acc.warnings,
+      `檔案代號為 ${detectedCode}，目前以 ${schema.code} 格式解析`,
+    );
+  } else if (!detectedCode) {
+    pushWarning(acc.warnings, "無法從 BOF 列辨識檔案代號（CDATA）");
+  }
+
+  const rawLines = splitLines(text);
+  if (!rawLines.length) {
+    acc.errors.push("檔案沒有內容");
+    return buildResult(acc, { filename, detectedCode, fileSize });
+  }
+
+  for (let i = 0; i < rawLines.length; i++) {
+    consumeLine(acc, rawLines[i] ?? "", i);
+  }
+
+  return buildResult(acc, { filename, detectedCode, fileSize });
+}
+
+/**
+ * 串流解析 File，避免 file.text() 將整檔載入記憶體造成 OOM。
+ * 可帶 filters／filterGlobal：大檔先篩選再收集符合列。
+ */
+export async function parseAchFile(
+  file: File,
+  schema: FormatSchema,
+  opts?: ImportParseOptions,
+): Promise<ImportResult> {
+  const filename = opts?.filename ?? file.name;
+  const detectedCode = await detectFormatCodeFromFile(file);
+  const acc = createAcc(schema, {
+    filters: opts?.filters,
+    filterGlobal: opts?.filterGlobal,
+  });
+
+  if (detectedCode && detectedCode !== schema.code) {
+    pushWarning(
+      acc.warnings,
+      `檔案代號為 ${detectedCode}，目前以 ${schema.code} 格式解析`,
+    );
+  } else if (!detectedCode) {
+    pushWarning(acc.warnings, "無法從 BOF 列辨識檔案代號（CDATA）");
+  }
+
+  const reader = file.stream().getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buf = "";
+  let bytesRead = 0;
+  let lineIndex = 0;
+  let lastProgressAt = 0;
+
+  const report = (force = false) => {
+    const now = Date.now();
+    if (
+      !force &&
+      now - lastProgressAt < IMPORT_LIMITS.progressIntervalMs
+    ) {
+      return;
+    }
+    lastProgressAt = now;
+    opts?.onProgress?.({
+      bytesRead,
+      totalBytes: file.size,
+      linesRead: lineIndex,
+      detailCount: acc.detailCount,
+      matchedCount: acc.filterActive ? acc.matchedCount : acc.detailCount,
+    });
+  };
+
+  try {
+    while (true) {
+      if (opts?.signal?.aborted) {
+        acc.errors.push("匯入已取消");
+        break;
       }
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      buf += decoder.decode(value, { stream: true });
+
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        let line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (lineIndex === 0 && line.charCodeAt(0) === 0xfeff) {
+          line = line.slice(1);
+        }
+        consumeLine(acc, line, lineIndex);
+        lineIndex += 1;
+        if (lineIndex % 2000 === 0) {
+          report();
+          // 讓出主執行緒，避免長檔解析時頁面完全卡死
+          await new Promise<void>((r) => setTimeout(r, 0));
+        }
+      }
+      report();
+    }
+
+    buf += decoder.decode();
+    if (buf.length) {
+      let line = buf;
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (lineIndex === 0 && line.charCodeAt(0) === 0xfeff) {
+        line = line.slice(1);
+      }
+      consumeLine(acc, line, lineIndex);
+      lineIndex += 1;
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* ignore */
     }
   }
 
-  return {
-    detectedCode,
-    schema,
+  if (!lineIndex) {
+    acc.errors.push("檔案沒有內容");
+  }
+
+  report(true);
+  return buildResult(acc, {
     filename,
-    header,
-    rows,
-    lines,
-    trailer,
-    warnings,
-    errors,
-    detailCount: rows.length,
-  };
+    detectedCode,
+    fileSize: file.size,
+  });
 }
 
 /** 在多個格式中選出最適合解析的 schema（優先 CDATA 代號，其次列長） */
@@ -276,7 +646,7 @@ export function resolveImportSchema(
   const code = detectFormatCode(text);
   if (code && formats[code]) return formats[code];
 
-  const lines = splitLines(text);
+  const lines = splitLines(text.slice(0, 4096));
   const sample = lines.find((l) => l.startsWith("BOF")) ?? lines[0] ?? "";
   const byLength = Object.values(formats).find(
     (s) => s.recordLength === sample.length,
@@ -284,4 +654,13 @@ export function resolveImportSchema(
   if (byLength) return byLength;
 
   return preferred ?? Object.values(formats)[0] ?? null;
+}
+
+export async function resolveImportSchemaFromFile(
+  file: File,
+  formats: Record<string, FormatSchema>,
+  preferred?: FormatSchema,
+): Promise<FormatSchema | null> {
+  const head = await file.slice(0, 4096).text();
+  return resolveImportSchema(head, formats, preferred);
 }

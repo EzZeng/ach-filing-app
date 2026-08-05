@@ -388,7 +388,8 @@
           "id": "BOF",
           "source": "literal",
           "value": "BOF",
-          "length": 3
+          "length": 3,
+          "label": "首錄別"
         },
         {
           "id": "CDATA",
@@ -397,21 +398,24 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "資料代號"
         },
         {
           "id": "TDATE",
           "source": "header",
           "key": "date",
           "length": 8,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "交易日期"
         },
         {
           "id": "SORG",
           "source": "derived",
           "fn": "sorg",
           "length": 7,
-          "charset": "digit"
+          "charset": "digit",
+          "label": "發送單位代號"
         },
         {
           "id": "VERNO",
@@ -420,13 +424,15 @@
           "pad": {
             "side": "right",
             "char": " "
-          }
+          },
+          "label": "版次"
         },
         {
           "id": "FILLER",
           "source": "filler",
           "length": 193,
-          "fill": " "
+          "fill": " ",
+          "label": "空白"
         }
       ]
     },
@@ -585,7 +591,8 @@
           "id": "EOF",
           "source": "literal",
           "value": "EOF",
-          "length": 3
+          "length": 3,
+          "label": "尾錄別"
         },
         {
           "id": "TCOUNT",
@@ -596,13 +603,15 @@
           "pad": {
             "side": "left",
             "char": "0"
-          }
+          },
+          "label": "總筆數"
         },
         {
           "id": "FILLER",
           "source": "filler",
           "length": 209,
-          "fill": " "
+          "fill": " ",
+          "label": "空白"
         }
       ]
     }

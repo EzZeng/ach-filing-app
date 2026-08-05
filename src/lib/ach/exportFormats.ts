@@ -1,6 +1,11 @@
 import type { DetailRow, FormatSchema, HeaderValues } from "./schema";
 import type { GenerateResult } from "./engine";
-import { isRowEmpty, lookupBranch, lookupTxid } from "./engine";
+import {
+  formatTxTypeLabel,
+  isRowEmpty,
+  lookupBranch,
+  lookupTxid,
+} from "./engine";
 import type { Branch, Txid } from "./schema";
 
 /** 成品輸出格式：txt 固定長度、html 報表、js 資料模組 */
@@ -79,7 +84,7 @@ function buildHtmlReport(
       let note = "";
       if (f.metaFrom === "txid") {
         const t = lookupTxid(v, txids);
-        if (t) note = `${t.type} · ${t.name}`;
+        if (t) note = `${formatTxTypeLabel(t.type)} · ${t.name}`;
       } else if (f.metaFrom === "branch") {
         note = lookupBranch(v, branches)?.name ?? "";
       } else if (f.optionsFrom === "authOptions") {

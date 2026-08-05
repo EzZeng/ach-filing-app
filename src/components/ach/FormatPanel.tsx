@@ -15,11 +15,15 @@ import {
   Globe,
   Upload,
   ArrowRight,
+  ArrowRightLeft,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
 import type { FormatSchema, FormFieldDef } from "@/lib/ach/schema";
+import { convertP01ToR01 } from "@/lib/ach/convertR01";
 import {
+  formatTxTypeLabel,
   generateFromSchema,
   headerHasError,
   isRowEmpty,
@@ -44,14 +48,20 @@ import {
   type ExportFormatId,
 } from "@/lib/ach/exportFormats";
 import {
-  parseAchText,
-  resolveImportSchema,
+  parseAchFile,
+  resolveImportSchemaFromFile,
+  type ImportProgress,
   type ImportResult,
 } from "@/lib/ach/import";
 import { normalizeSubmitDate } from "@/lib/ach/utils";
 import { saveAchFile, saveAchFiles } from "@/lib/ach/desktop";
 import { CodePicker } from "./CodePicker";
-import { ImportPreviewDialog } from "./ImportPreviewDialog";
+import { ConvertR01Dialog } from "./ConvertR01Dialog";
+import {
+  ControlHeaderPreview,
+  ControlTrailerPreview,
+  ImportPreviewDialog,
+} from "./ImportPreviewDialog";
 
 type Props = {
   schema: FormatSchema;
@@ -99,7 +109,13 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(
+    null,
+  );
   const [dragOver, setDragOver] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   const workspaceOpen = isWorkspaceOpen(schema.code);
   const workspace = getWorkspace(schema.code);
@@ -145,10 +161,23 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     [schema, header, txids, branches],
   );
 
-  const rowErrs = useMemo(
-    () => rows.map((r) => validateDetailRow(schema, r, txids, branches)),
-    [schema, rows, txids, branches],
-  );
+  const rowErrs = useMemo(() => {
+    // 大量列時避免一次驗證全部造成主執行緒卡死／記憶體暴衝
+    const MAX_FULL_VALIDATE = 800;
+    if (rows.length <= MAX_FULL_VALIDATE) {
+      return rows.map((r) =>
+        validateDetailRow(schema, r, txids, branches, header),
+      );
+    }
+    return rows.map((r) => {
+      if (isRowEmpty(r, schema)) {
+        const empty: Record<string, string | null> = {};
+        for (const f of schema.form.detail) empty[f.key] = null;
+        return empty;
+      }
+      return validateDetailRow(schema, r, txids, branches, header);
+    });
+  }, [schema, rows, txids, branches, header]);
 
   const stats = useMemo(() => {
     let count = 0;
@@ -205,7 +234,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     const v = header[field.key] ?? "";
     if (field.metaFrom === "txid") {
       const t = lookupTxid(v, txids);
-      return t ? `${t.type} · ${t.name}` : "";
+      return t ? `${formatTxTypeLabel(t.type)} · ${t.name}` : "";
     }
     if (field.metaFrom === "branch") {
       return lookupBranch(v, branches)?.name ?? "";
@@ -229,9 +258,9 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     blurHeader(schema.code, schema, field.key);
   }
 
-  function validateBeforeGenerate(): boolean {
+  function validateFormData(): boolean {
     if (headerHasError(headerErrs)) {
-      toast.error("表頭資料輸入有誤");
+      toast.error("提出／發動者資料輸入有誤");
       return false;
     }
     const bad: number[] = [];
@@ -249,6 +278,11 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       toast.error("尚無有效明細資料");
       return false;
     }
+    return true;
+  }
+
+  function validateBeforeGenerate(): boolean {
+    if (!validateFormData()) return false;
     if (selectedExports.length === 0) {
       toast.error("請至少選擇一種輸出格式");
       return false;
@@ -292,25 +326,131 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     await handleGenerate([fmt]);
   }
 
-  async function handleImportFile(file: File) {
-    let text: string;
+  async function handleConvertToR01(opts: {
+    rcode: string;
+    ydate: string;
+    pdate: string;
+  }) {
+    const r01 = formats.ACHR01;
+    if (!r01) {
+      toast.error("找不到 ACHR01 格式定義");
+      return;
+    }
+    if (!validateFormData()) return;
+    setConverting(true);
     try {
-      text = await file.text();
-    } catch {
-      toast.error("無法讀取檔案");
-      return;
+      const result = convertP01ToR01(
+        r01,
+        header,
+        rows,
+        txids,
+        branches,
+        opts,
+      );
+      await saveAchFiles(
+        result.files.map((f) => ({
+          filename: f.filename,
+          content: f.content,
+          mime: "text/plain;charset=utf-8",
+        })),
+      );
+      const names = result.files.map((f) => f.filename).join("、");
+      toast.success(
+        `已轉檔 ${names}（${result.detailCount} 筆，RCODE=${result.rcode}）`,
+      );
+      setConvertOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "轉檔失敗");
+    } finally {
+      setConverting(false);
     }
-    const target =
-      resolveImportSchema(text, formats, schema) ?? schema;
-    const result = parseAchText(text, target, { filename: file.name });
-    if (result.errors.length && result.detailCount === 0 && !result.lines.length) {
-      toast.error(result.errors[0] ?? "匯入失敗");
-      return;
-    }
-    setImportResult(result);
   }
 
-  function applyImport(result: ImportResult) {
+  async function handleImportFile(file: File) {
+    setImportFile(file);
+    setImportProgress({
+      bytesRead: 0,
+      totalBytes: file.size,
+      linesRead: 0,
+      detailCount: 0,
+      matchedCount: 0,
+    });
+    try {
+      const target =
+        (await resolveImportSchemaFromFile(file, formats, schema)) ?? schema;
+      const result = await parseAchFile(file, target, {
+        filename: file.name,
+        onProgress: setImportProgress,
+      });
+      if (
+        result.errors.length &&
+        result.detailCount === 0 &&
+        !result.lines.length
+      ) {
+        toast.error(result.errors[0] ?? "匯入失敗");
+        setImportFile(null);
+        return;
+      }
+      setImportResult(result);
+      if (result.tooLargeForForm) {
+        toast.message(
+          `檔案 ${result.detailCount.toLocaleString("zh-TW")} 筆：請先預先篩選欄位後再載入符合結果`,
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "無法讀取檔案");
+      setImportFile(null);
+    } finally {
+      setImportProgress(null);
+    }
+  }
+
+  async function handleImportFilterScan(
+    filters: DetailFilters,
+    global: string,
+  ) {
+    if (!importFile || !importResult) {
+      toast.error("找不到原始上傳檔，請重新上傳");
+      return;
+    }
+    setImportProgress({
+      bytesRead: 0,
+      totalBytes: importFile.size,
+      linesRead: 0,
+      detailCount: 0,
+      matchedCount: 0,
+    });
+    try {
+      const result = await parseAchFile(importFile, importResult.schema, {
+        filename: importFile.name,
+        filters,
+        filterGlobal: global,
+        onProgress: setImportProgress,
+      });
+      setImportResult(result);
+      if (result.tooLargeForForm) {
+        toast.error(
+          `符合 ${result.matchedCount.toLocaleString("zh-TW")} 筆仍超上限，請再縮小條件`,
+        );
+      } else if (result.matchedCount === 0) {
+        toast.message("沒有符合篩選的明細");
+      } else {
+        toast.success(
+          `已載入符合篩選的全部 ${result.matchedCount.toLocaleString("zh-TW")} 筆`,
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "篩選載入失敗");
+    } finally {
+      setImportProgress(null);
+    }
+  }
+
+  async function applyImport(result: ImportResult) {
+    if (result.tooLargeForForm) {
+      toast.error("筆數仍超過上限，請先預先篩選");
+      return;
+    }
     loadFromImport(
       result.schema,
       {
@@ -322,10 +462,19 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     if (result.schema.code !== schema.code) {
       onSelectFormat?.(result.schema.code);
     }
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 180);
+    });
     setImportResult(null);
+    setImportFile(null);
     toast.success(
-      `已匯入 ${result.schema.code}（${result.detailCount} 筆明細），可進行檢核與加工`,
+      `已匯入 ${result.schema.code}（${result.matchedCount.toLocaleString("zh-TW")} 筆明細），可進行檢核與加工`,
     );
+  }
+
+  function closeImportPreview() {
+    setImportResult(null);
+    setImportFile(null);
   }
 
   const selectOptions = (field: FormFieldDef) => {
@@ -349,10 +498,90 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     />
   );
 
+  // 初次上傳用全畫面 mask；預覽對話框內的篩選重掃改由對話框自家 mask 顯示
+  const importLoadingMask =
+    importProgress && !importResult ? (
+      <div
+        className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/45 p-4 backdrop-blur-[1px]"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="card flex w-full max-w-sm flex-col items-center gap-3 px-6 py-8 text-center">
+          <Loader2 className="size-9 animate-spin text-primary" />
+          <p className="text-sm font-semibold text-fg">串流讀取檔案中…</p>
+          <p className="text-xs text-muted">
+            已讀{" "}
+            {importProgress.totalBytes > 0
+              ? `${Math.min(
+                  100,
+                  Math.round(
+                    (importProgress.bytesRead / importProgress.totalBytes) *
+                      100,
+                  ),
+                )}%`
+              : "…"}
+            {" · "}
+            明細 {importProgress.detailCount.toLocaleString("zh-TW")} 筆
+            {" · "}
+            列 {importProgress.linesRead.toLocaleString("zh-TW")}
+          </p>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+            <div
+              className="h-full bg-primary transition-[width] duration-150"
+              style={{
+                width: `${
+                  importProgress.totalBytes > 0
+                    ? Math.min(
+                        100,
+                        (importProgress.bytesRead / importProgress.totalBytes) *
+                          100,
+                      )
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          <p className="text-[11px] text-faint">
+            大檔採逐列串流，不會一次載入整份到記憶體
+          </p>
+        </div>
+      </div>
+    ) : null;
+
+  const importDialog = (
+    <ImportPreviewDialog
+      open={!!importResult}
+      result={importResult}
+      txids={txids}
+      branches={branches}
+      sourceFile={importFile}
+      scanning={!!importProgress && !!importResult}
+      scanProgress={importProgress}
+      onClose={closeImportPreview}
+      onApply={applyImport}
+      onFilterScan={handleImportFilterScan}
+    />
+  );
+
+  const convertDialog =
+    schema.code === "ACHP01" ? (
+      <ConvertR01Dialog
+        open={convertOpen}
+        detailCount={stats.count}
+        tdate={String(header.date ?? "")}
+        busy={converting}
+        onClose={() => {
+          if (!converting) setConvertOpen(false);
+        }}
+        onConfirm={handleConvertToR01}
+      />
+    ) : null;
+
   // —— 預設：引導先上傳既有 P01／P02，隱藏新建表單 ——
   if (!workspaceOpen) {
     return (
       <div className="space-y-4">
+        {importLoadingMask}
         <div className="card overflow-hidden">
           <div className="border-b border-border bg-surface-2/60 px-4 py-4 sm:px-5">
             <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -366,7 +595,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
               {schema.shortCode} {schema.name}・檢核與加工
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted">
-              本工具以既有財金 ACH 固定長度檔（P01 代收／P02 授權）為主：
+              本工具以既有財金 ACH 固定長度檔（P01 代收／代付、P02 授權）為主：
               先上傳檔案檢核欄位與列長，再視需要修正後重新產出。
             </p>
           </div>
@@ -448,20 +677,14 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
         </div>
 
-        <ImportPreviewDialog
-          open={!!importResult}
-          result={importResult}
-          txids={txids}
-          branches={branches}
-          onClose={() => setImportResult(null)}
-          onApply={applyImport}
-        />
+        {importDialog}
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {importLoadingMask}
       <div className="card p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -512,70 +735,111 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {schema.form.header.map((field) => {
-            const err = headerErrs[field.key];
-            const meta = fieldMeta(field);
-            return (
-              <div key={field.key}>
-                <label
-                  className="field-label"
-                  htmlFor={`${schema.code}-${field.key}`}
-                >
-                  {field.label}
-                </label>
-                {field.inputType === "select" ? (
-                  <select
-                    id={`${schema.code}-${field.key}`}
-                    className={`field-input ${err ? "err" : "warn"}`}
-                    value={header[field.key] ?? ""}
-                    onChange={(e) =>
-                      setHeader(schema.code, schema, field.key, e.target.value)
-                    }
-                  >
-                    {selectOptions(field).map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="flex gap-1">
-                    <input
-                      id={`${schema.code}-${field.key}`}
-                      className={`field-input ${field.ui?.mono ? "font-mono" : ""} ${err ? "err" : "warn"}`}
-                      value={header[field.key] ?? ""}
-                      maxLength={field.length || undefined}
-                      placeholder={field.placeholder}
-                      onChange={(e) =>
-                        setHeader(schema.code, schema, field.key, e.target.value)
-                      }
-                      onBlur={() => onHeaderBlur(field)}
-                    />
-                    {field.picker && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary px-2"
-                        onClick={() =>
-                          setPicker({
-                            mode: field.picker!,
-                            target: "header",
-                            key: field.key,
-                          })
+        <div className="mb-4 space-y-4">
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">控制首錄（HEADER）</h3>
+            <p className="mb-2 text-xs text-muted">
+              對照財金固定長度首錄：首錄別、資料代號、處理日期、處理時間、發送／接收單位代號、版次。交易代號／帳號／統編不在此列。
+            </p>
+            <ControlHeaderPreview
+              schema={schema}
+              header={header}
+              branches={branches}
+            />
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">
+              提出／發動者資料（寫入明細共用）
+            </h3>
+            <p className="mb-2 text-xs text-muted">
+              供編輯與檢核；產生檔時寫入明細錄（並衍生首錄發送單位代號）。
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              {schema.form.header.map((field) => {
+                const err = headerErrs[field.key];
+                const meta = fieldMeta(field);
+                return (
+                  <div key={field.key}>
+                    <label
+                      className="field-label"
+                      htmlFor={`${schema.code}-${field.key}`}
+                    >
+                      {field.label}
+                    </label>
+                    {field.inputType === "select" ? (
+                      <select
+                        id={`${schema.code}-${field.key}`}
+                        className={`field-input ${err ? "err" : "warn"}`}
+                        value={header[field.key] ?? ""}
+                        onChange={(e) =>
+                          setHeader(schema.code, schema, field.key, e.target.value)
                         }
-                        aria-label={`搜尋${field.label}`}
                       >
-                        <Search className="size-4" />
-                      </button>
+                        {selectOptions(field).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex gap-1">
+                        <input
+                          id={`${schema.code}-${field.key}`}
+                          className={`field-input ${field.ui?.mono ? "font-mono" : ""} ${err ? "err" : "warn"}`}
+                          value={header[field.key] ?? ""}
+                          maxLength={field.length || undefined}
+                          placeholder={field.placeholder}
+                          onChange={(e) =>
+                            setHeader(
+                              schema.code,
+                              schema,
+                              field.key,
+                              e.target.value,
+                            )
+                          }
+                          onBlur={() => onHeaderBlur(field)}
+                        />
+                        {field.picker && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary px-2"
+                            onClick={() =>
+                              setPicker({
+                                mode: field.picker!,
+                                target: "header",
+                                key: field.key,
+                              })
+                            }
+                            aria-label={`搜尋${field.label}`}
+                          >
+                            <Search className="size-4" />
+                          </button>
+                        )}
+                      </div>
                     )}
+                    <div className={err ? "field-hint" : "field-meta"}>
+                      {err || meta || "\u00a0"}
+                    </div>
                   </div>
-                )}
-                <div className={err ? "field-hint" : "field-meta"}>
-                  {err || meta || "\u00a0"}
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-sm font-bold text-fg">控制尾錄（FOOTER）</h3>
+            <p className="mb-2 text-xs text-muted">
+              對照財金固定長度尾錄（總筆數、總金額等，產生時自動計算）。
+            </p>
+            <ControlTrailerPreview
+              schema={schema}
+              header={header}
+              totalCount={stats.count}
+              totalAmount={stats.amount}
+              branches={branches}
+            />
+          </div>
         </div>
 
         {/* 成品輸出／加工 */}
@@ -622,6 +886,19 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                 ? `（${selectedExports.length}）`
                 : ""}
             </button>
+            {schema.code === "ACHP01" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (!validateFormData()) return;
+                  setConvertOpen(true);
+                }}
+              >
+                <ArrowRightLeft className="size-4" />
+                轉檔 R01
+              </button>
+            ) : null}
             {exportFormats.map((fmt) => {
               const meta = EXPORT_FORMAT_META[fmt];
               const Icon = FORMAT_ICONS[fmt];
@@ -941,14 +1218,8 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           }
         }}
       />
-      <ImportPreviewDialog
-        open={!!importResult}
-        result={importResult}
-        txids={txids}
-        branches={branches}
-        onClose={() => setImportResult(null)}
-        onApply={applyImport}
-      />
+      {importDialog}
+      {convertDialog}
     </div>
   );
 }

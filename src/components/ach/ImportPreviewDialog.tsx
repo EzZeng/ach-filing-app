@@ -1,47 +1,117 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   FileUp,
+  Filter,
   ListTree,
+  Loader2,
   X,
 } from "lucide-react";
-import type { Branch, FormatSchema, Txid } from "@/lib/ach/schema";
-import type { ImportResult } from "@/lib/ach/import";
-import { lookupBranch, lookupTxid } from "@/lib/ach/engine";
+import type {
+  Branch,
+  FormatSchema,
+  RecordFieldDef,
+  Txid,
+} from "@/lib/ach/schema";
+import {
+  IMPORT_LIMITS,
+  type ImportProgress,
+  type ImportResult,
+  type ParsedLine,
+} from "@/lib/ach/import";
+import {
+  formatTxTypeLabel,
+  lookupBranch,
+  lookupTxid,
+  resolveSorg,
+} from "@/lib/ach/engine";
+import {
+  emptyDetailFilters,
+  filterableDetailFields,
+  hasActiveFilters,
+  type DetailFilters,
+} from "@/lib/ach/filter";
 
 type Props = {
   open: boolean;
   result: ImportResult | null;
   txids: Txid[];
   branches: Branch[];
+  /** 原始上傳檔（大檔預先篩選需再次串流） */
+  sourceFile?: File | null;
+  scanning?: boolean;
+  scanProgress?: ImportProgress | null;
   onClose: () => void;
-  onApply: (result: ImportResult) => void;
+  onApply: (result: ImportResult) => void | Promise<void>;
+  /** 依篩選條件重新串流並載入符合列 */
+  onFilterScan?: (
+    filters: DetailFilters,
+    global: string,
+  ) => void | Promise<void>;
 };
 
-type PreviewTab = "form" | "fields" | "raw";
+type PreviewTab = "fields" | "form" | "raw";
+
+const KIND_LABEL: Record<ParsedLine["kind"], string> = {
+  header: "控制首錄（HEADER）",
+  detail: "明細錄",
+  trailer: "控制尾錄（FOOTER）",
+  unknown: "未知",
+};
 
 export function ImportPreviewDialog({
   open,
   result,
   txids,
   branches,
+  sourceFile = null,
+  scanning = false,
+  scanProgress = null,
   onClose,
   onApply,
+  onFilterScan,
 }: Props) {
-  const [tab, setTab] = useState<PreviewTab>("form");
+  /** 預設以固定長度欄位（控制首／尾錄）為準 */
+  const [tab, setTab] = useState<PreviewTab>("fields");
+  const [applying, setApplying] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<DetailFilters>({});
+  const [draftGlobal, setDraftGlobal] = useState("");
 
   const schema = result?.schema;
-  const canApply = !!result && result.errors.length === 0;
+  const busy = applying || scanning;
+  const canApply =
+    !!result &&
+    result.errors.length === 0 &&
+    !result.tooLargeForForm &&
+    !busy;
 
-  const headerNotes = useMemo(() => {
+  useEffect(() => {
+    if (!open) {
+      setApplying(false);
+      return;
+    }
+    if (result?.schema) {
+      setDraftFilters(
+        result.filterActive
+          ? { ...result.appliedFilters }
+          : emptyDetailFilters(result.schema),
+      );
+      setDraftGlobal(result.filterActive ? result.appliedGlobal : "");
+      if (result.tooLargeForForm || result.filterActive) {
+        setTab("form");
+      }
+    }
+  }, [open, result]);
+
+  const formNotes = useMemo(() => {
     if (!result || !schema) return {};
     const notes: Record<string, string> = {};
     for (const f of schema.form.header) {
       const v = result.header[f.key] ?? "";
       if (f.metaFrom === "txid") {
         const t = lookupTxid(v, txids);
-        notes[f.key] = t ? `${t.type} · ${t.name}` : "";
+        notes[f.key] = t ? `${formatTxTypeLabel(t.type)} · ${t.name}` : "";
       } else if (f.metaFrom === "branch") {
         notes[f.key] = lookupBranch(v, branches)?.name ?? "";
       } else if (f.optionsFrom === "authOptions") {
@@ -52,21 +122,80 @@ export function ImportPreviewDialog({
     return notes;
   }, [result, schema, txids, branches]);
 
+  async function handleApply() {
+    if (!result || !canApply) return;
+    setApplying(true);
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        window.setTimeout(resolve, 40);
+      });
+    });
+    try {
+      await onApply(result);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function handleFilterScan() {
+    if (!onFilterScan || busy) return;
+    if (!hasActiveFilters(draftFilters, { global: draftGlobal })) {
+      return;
+    }
+    await onFilterScan(draftFilters, draftGlobal);
+  }
+
+  function handleClose() {
+    if (busy) return;
+    onClose();
+  }
+
   if (!open || !result || !schema) return null;
+
+  const showPreFilter = !!sourceFile && !!onFilterScan;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
-      onClick={onClose}
+      onClick={handleClose}
       role="presentation"
     >
       <div
-        className="card flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden"
+        className="card relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-label="匯入預覽"
       >
+        {busy && (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-surface/80 backdrop-blur-[1px]"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="size-9 animate-spin text-primary" />
+            <p className="text-sm font-semibold text-fg">
+              {scanning ? "依篩選條件串流載入中…" : "套用到表單中…"}
+            </p>
+            <p className="text-xs text-muted">
+              {scanning && scanProgress
+                ? `已讀 ${
+                    scanProgress.totalBytes > 0
+                      ? `${Math.min(
+                          100,
+                          Math.round(
+                            (scanProgress.bytesRead / scanProgress.totalBytes) *
+                              100,
+                          ),
+                        )}%`
+                      : "…"
+                  } · 符合 ${scanProgress.matchedCount.toLocaleString("zh-TW")}／總計 ${scanProgress.detailCount.toLocaleString("zh-TW")}`
+                : `正在載入 ${result.matchedCount.toLocaleString("zh-TW")} 筆明細，請稍候`}
+            </p>
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0">
             <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -77,29 +206,62 @@ export function ImportPreviewDialog({
                 V{schema.version.replace(/^V/i, "")}
               </span>
               <span className="text-xs text-muted">
-                列長 {schema.recordLength} · 明細 {result.detailCount} 筆
+                列長 {schema.recordLength} · 明細{" "}
+                {result.detailCount.toLocaleString("zh-TW")} 筆
+                {result.filterActive
+                  ? ` · 符合 ${result.matchedCount.toLocaleString("zh-TW")}`
+                  : ""}
+                {result.fileSize > 0
+                  ? ` · ${(result.fileSize / (1024 * 1024)).toFixed(1)} MB`
+                  : ""}
               </span>
+              {result.filterActive && (
+                <span className="badge badge-ok gap-1">
+                  <Filter className="size-3" />
+                  已預先篩選
+                </span>
+              )}
             </div>
             <p className="truncate text-xs text-muted" title={result.filename}>
               {result.filename || "未命名檔案"} · {schema.shortCode}{" "}
               {schema.name}
-              {result.detectedCode
-                ? ` · 偵測 ${result.detectedCode}`
-                : ""}
+              {result.detectedCode ? ` · 偵測 ${result.detectedCode}` : ""}
             </p>
           </div>
           <button
             type="button"
             className="btn btn-ghost px-2"
-            onClick={onClose}
+            onClick={handleClose}
+            disabled={busy}
             aria-label="關閉"
           >
             <X className="size-5" />
           </button>
         </div>
 
-        {(result.errors.length > 0 || result.warnings.length > 0) && (
+        {(result.tooLargeForForm ||
+          result.errors.length > 0 ||
+          result.warnings.length > 0 ||
+          result.lengthErrorCount > 0) && (
           <div className="space-y-1.5 border-b border-border bg-surface-2/60 px-4 py-3">
+            {result.tooLargeForForm && (
+              <div className="flex items-start gap-2 text-sm font-semibold text-danger">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  {result.filterActive
+                    ? `符合篩選仍有 ${result.matchedCount.toLocaleString("zh-TW")} 筆，超過上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆。請再縮小篩選條件。`
+                    : `檔案過大（${result.detailCount.toLocaleString("zh-TW")} 筆），無法一次載入（上限 ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）。請先在下方「預先篩選」欄位後再載入符合結果。`}
+                </span>
+              </div>
+            )}
+            {result.lengthErrorCount > 0 && (
+              <div className="flex items-start gap-2 text-sm text-accent">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  列長不符 {result.lengthErrorCount.toLocaleString("zh-TW")} 筆
+                </span>
+              </div>
+            )}
             {result.errors.map((msg) => (
               <div
                 key={`e-${msg}`}
@@ -126,11 +288,27 @@ export function ImportPreviewDialog({
           </div>
         )}
 
+        {showPreFilter && (
+          <PreFilterPanel
+            schema={schema}
+            draftFilters={draftFilters}
+            draftGlobal={draftGlobal}
+            disabled={busy}
+            onFiltersChange={setDraftFilters}
+            onGlobalChange={setDraftGlobal}
+            onScan={() => void handleFilterScan()}
+            onClear={() => {
+              setDraftFilters(emptyDetailFilters(schema));
+              setDraftGlobal("");
+            }}
+          />
+        )}
+
         <div className="flex flex-wrap gap-1 border-b border-border px-4 pt-2">
           {(
             [
-              ["form", "表單欄位"],
               ["fields", "固定長度欄位"],
+              ["form", "表單欄位"],
               ["raw", "原始列"],
             ] as const
           ).map(([id, label]) => (
@@ -143,6 +321,7 @@ export function ImportPreviewDialog({
                   : "text-muted hover:text-fg"
               }`}
               onClick={() => setTab(id)}
+              disabled={busy}
             >
               {label}
             </button>
@@ -150,34 +329,54 @@ export function ImportPreviewDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          {tab === "fields" && <FieldsPreview result={result} schema={schema} />}
           {tab === "form" && (
             <FormPreview
               schema={schema}
               result={result}
-              headerNotes={headerNotes}
+              formNotes={formNotes}
               branches={branches}
             />
           )}
-          {tab === "fields" && <FieldsPreview result={result} />}
           {tab === "raw" && <RawPreview result={result} schema={schema} />}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
           <p className="text-xs text-muted">
-            套用後會覆寫「{schema.code}」目前的表頭與明細
+            {result.tooLargeForForm
+              ? result.filterActive
+                ? "請縮小篩選後再套用"
+                : "請先預先篩選並載入符合結果"
+              : result.filterActive
+                ? `將套用篩選後的 ${result.matchedCount.toLocaleString("zh-TW")} 筆到「${schema.code}」表單`
+                : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
           </p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              取消
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleClose}
+              disabled={busy}
+            >
+              {result.tooLargeForForm && !result.filterActive ? "關閉" : "取消"}
             </button>
             <button
               type="button"
               className="btn btn-primary"
               disabled={!canApply}
-              onClick={() => onApply(result)}
+              onClick={() => void handleApply()}
+              title={
+                result.tooLargeForForm
+                  ? `超過 ${IMPORT_LIMITS.maxFormDetailRows} 筆上限`
+                  : undefined
+              }
             >
-              <CheckCircle2 className="size-4" />
-              套用到表單
+              {applying ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
+              {applying ? "套用中…" : "套用到表單"}
             </button>
           </div>
         </div>
@@ -186,21 +385,242 @@ export function ImportPreviewDialog({
   );
 }
 
+function PreFilterPanel({
+  schema,
+  draftFilters,
+  draftGlobal,
+  disabled,
+  onFiltersChange,
+  onGlobalChange,
+  onScan,
+  onClear,
+}: {
+  schema: FormatSchema;
+  draftFilters: DetailFilters;
+  draftGlobal: string;
+  disabled: boolean;
+  onFiltersChange: (f: DetailFilters) => void;
+  onGlobalChange: (g: string) => void;
+  onScan: () => void;
+  onClear: () => void;
+}) {
+  const fields = filterableDetailFields(schema);
+  const ready = hasActiveFilters(draftFilters, { global: draftGlobal });
+
+  return (
+    <div className="border-b border-border bg-primary-soft/20 px-4 py-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Filter className="size-4 text-primary" />
+        <h4 className="text-sm font-bold text-fg">預先篩選欄位</h4>
+        <span className="text-xs text-muted">
+          大檔請先設定條件，再串流載入「符合的全部結果」（上限{" "}
+          {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆）
+        </span>
+      </div>
+      <div className="mb-2">
+        <label className="field-label" htmlFor="import-filter-global">
+          全域關鍵字
+        </label>
+        <input
+          id="import-filter-global"
+          className="field-input"
+          placeholder="比對任一明細欄…"
+          value={draftGlobal}
+          disabled={disabled}
+          onChange={(e) => onGlobalChange(e.target.value)}
+        />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label
+              className="field-label"
+              htmlFor={`import-filter-${field.key}`}
+            >
+              {field.label}
+            </label>
+            <input
+              id={`import-filter-${field.key}`}
+              className={`field-input ${field.ui?.mono ? "font-mono" : ""}`}
+              placeholder="包含…"
+              value={draftFilters[field.key] ?? ""}
+              disabled={disabled}
+              onChange={(e) =>
+                onFiltersChange({
+                  ...draftFilters,
+                  [field.key]: e.target.value,
+                })
+              }
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={disabled || !ready}
+          onClick={onScan}
+        >
+          <Filter className="size-4" />
+          套用篩選並顯示全部結果
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={disabled}
+          onClick={onClear}
+        >
+          清除條件
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RecordFieldsTable({
+  title,
+  line,
+  defs,
+}: {
+  title: string;
+  line?: ParsedLine;
+  defs: RecordFieldDef[];
+}) {
+  if (!line) {
+    return (
+      <section>
+        <h4 className="mb-2 text-sm font-bold">{title}</h4>
+        <p className="text-sm text-muted">無此列</p>
+      </section>
+    );
+  }
+
+  const byId = new Map(defs.map((d) => [d.id, d]));
+
+  return (
+    <section>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <ListTree className="size-4 text-primary" />
+        <h4 className="text-sm font-bold">{title}</h4>
+        <span className={`badge ${line.lengthOk ? "badge-ok" : "badge-err"}`}>
+          長度 {line.length}
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>欄位</th>
+              <th>ID</th>
+              <th>長度</th>
+              <th>原始</th>
+              <th>解析值</th>
+            </tr>
+          </thead>
+          <tbody>
+            {line.fields
+              .filter((f) => f.id !== "FILLER")
+              .map((f) => {
+                const def = byId.get(f.id);
+                return (
+                  <tr key={`${line.index}-${f.id}-${f.key ?? ""}`}>
+                    <td className="whitespace-nowrap">
+                      {def?.label || f.id}
+                    </td>
+                    <td className="font-mono text-xs">{f.id}</td>
+                    <td className="text-center">{f.length}</td>
+                    <td
+                      className="max-w-48 truncate font-mono text-xs"
+                      title={f.raw}
+                    >
+                      {f.raw.replace(/ /g, "·") || "—"}
+                    </td>
+                    <td className="font-mono text-xs">{f.value || "—"}</td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function FieldsPreview({
+  result,
+  schema,
+}: {
+  result: ImportResult;
+  schema: FormatSchema;
+}) {
+  const headerLine = result.lines.find((l) => l.kind === "header");
+  const trailerLine = result.lines.find((l) => l.kind === "trailer");
+  const detailLines = result.lines.filter((l) => l.kind === "detail");
+  const detailSamples = detailLines.slice(0, 2);
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-muted">
+        依財金固定長度規格切片。表頭＝控制首錄、表尾＝控制尾錄（不含「交易代號／帳號」等明細共用欄）。
+      </p>
+
+      <RecordFieldsTable
+        title={KIND_LABEL.header}
+        line={headerLine}
+        defs={schema.records.header.fields}
+      />
+
+      {detailSamples.map((line, i) => (
+        <RecordFieldsTable
+          key={line.index}
+          title={`${KIND_LABEL.detail}（第 ${i + 1} 筆／共 ${detailLines.length}）`}
+          line={line}
+          defs={schema.records.detail.fields}
+        />
+      ))}
+      {detailLines.length > detailSamples.length && (
+        <p className="text-xs text-muted">
+          另有 {detailLines.length - detailSamples.length} 筆明細未全部列出（見「原始列」）
+        </p>
+      )}
+
+      <RecordFieldsTable
+        title={KIND_LABEL.trailer}
+        line={trailerLine}
+        defs={schema.records.trailer.fields}
+      />
+    </div>
+  );
+}
+
 function FormPreview({
   schema,
   result,
-  headerNotes,
+  formNotes,
   branches,
 }: {
   schema: FormatSchema;
   result: ImportResult;
-  headerNotes: Record<string, string>;
+  formNotes: Record<string, string>;
   branches: Branch[];
 }) {
+  const headerLine = result.lines.find((l) => l.kind === "header");
+  const trailerLine = result.lines.find((l) => l.kind === "trailer");
+
   return (
     <div className="space-y-4">
+      <RecordFieldsTable
+        title="控制首錄（HEADER）"
+        line={headerLine}
+        defs={schema.records.header.fields}
+      />
+
       <section>
-        <h4 className="mb-2 text-sm font-bold">表頭</h4>
+        <h4 className="mb-1 text-sm font-bold">提出／發動者資料（寫入明細共用）</h4>
+        <p className="mb-2 text-xs text-muted">
+          這些不是控制首錄欄位；匯入時由首錄衍生欄與明細列還原，供表單編輯。
+        </p>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="data-table">
             <thead>
@@ -215,7 +635,7 @@ function FormPreview({
                 <tr key={f.key}>
                   <td className="whitespace-nowrap">{f.label}</td>
                   <td className="font-mono">{result.header[f.key] || "—"}</td>
-                  <td className="text-muted">{headerNotes[f.key] || ""}</td>
+                  <td className="text-muted">{formNotes[f.key] || ""}</td>
                 </tr>
               ))}
             </tbody>
@@ -224,9 +644,15 @@ function FormPreview({
       </section>
 
       <section>
-        <div className="mb-2 flex items-center gap-2">
-          <h4 className="text-sm font-bold">明細</h4>
-          <span className="stat-pill text-xs">{result.detailCount} 筆</span>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <h4 className="text-sm font-bold">
+            {result.filterActive ? "篩選結果（全部符合）" : "明細預覽"}
+          </h4>
+          <span className="stat-pill text-xs">
+            {result.filterActive
+              ? `符合 ${result.matchedCount.toLocaleString("zh-TW")}／總計 ${result.detailCount.toLocaleString("zh-TW")} 筆（列出 ${result.previewRows.length}）`
+              : `顯示 ${result.previewRows.length}／${result.detailCount.toLocaleString("zh-TW")} 筆`}
+          </span>
         </div>
         <div className="scroll-panel max-h-[40vh] rounded-lg border border-border">
           <table className="data-table">
@@ -240,7 +666,7 @@ function FormPreview({
               </tr>
             </thead>
             <tbody>
-              {result.rows.length === 0 ? (
+              {result.previewRows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={schema.form.detail.length + 2}
@@ -250,7 +676,7 @@ function FormPreview({
                   </td>
                 </tr>
               ) : (
-                result.rows.map((row, i) => (
+                result.previewRows.map((row, i) => (
                   <tr key={row.id}>
                     <td className="text-center text-faint">{i + 1}</td>
                     {schema.form.detail.map((f) => (
@@ -272,77 +698,11 @@ function FormPreview({
         </div>
       </section>
 
-      {Object.keys(result.trailer).length > 0 && (
-        <section>
-          <h4 className="mb-2 text-sm font-bold">尾筆摘要</h4>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(result.trailer)
-              .filter(([k, v]) => v && k !== "FILLER" && k !== "EOF")
-              .map(([k, v]) => (
-                <span key={k} className="stat-pill font-mono text-xs">
-                  {k}={v}
-                </span>
-              ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function FieldsPreview({ result }: { result: ImportResult }) {
-  const samples = result.lines.filter((l) => l.kind !== "unknown").slice(0, 3);
-  if (!samples.length) {
-    return <p className="text-sm text-muted">無可解析的固定長度欄位</p>;
-  }
-  return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted">
-        依 JSON records 定義切片（顯示前 {samples.length} 列）
-      </p>
-      {samples.map((line) => (
-        <section key={line.index}>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <ListTree className="size-4 text-primary" />
-            <h4 className="text-sm font-bold">
-              第 {line.index + 1} 列 · {line.kind}
-            </h4>
-            <span
-              className={`badge ${line.lengthOk ? "badge-ok" : "badge-err"}`}
-            >
-              長度 {line.length}
-            </span>
-          </div>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>source</th>
-                  <th>key</th>
-                  <th>長度</th>
-                  <th>原始</th>
-                  <th>解析值</th>
-                </tr>
-              </thead>
-              <tbody>
-                {line.fields.map((f) => (
-                  <tr key={`${line.index}-${f.id}-${f.key ?? ""}`}>
-                    <td className="font-mono text-xs">{f.id}</td>
-                    <td className="text-xs text-muted">{f.source}</td>
-                    <td className="font-mono text-xs">{f.key || "—"}</td>
-                    <td className="text-center">{f.length}</td>
-                    <td className="max-w-48 truncate font-mono text-xs" title={f.raw}>
-                      {f.raw.replace(/ /g, "·") || "—"}
-                    </td>
-                    <td className="font-mono text-xs">{f.value || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+      <RecordFieldsTable
+        title="控制尾錄（FOOTER）"
+        line={trailerLine}
+        defs={schema.records.trailer.fields}
+      />
     </div>
   );
 }
@@ -360,7 +720,7 @@ function RawPreview({
         <thead>
           <tr>
             <th className="w-12">#</th>
-            <th className="w-20">類型</th>
+            <th className="w-40">類型</th>
             <th>內容</th>
             <th className="w-20">長度</th>
           </tr>
@@ -369,7 +729,7 @@ function RawPreview({
           {result.lines.map((line) => (
             <tr key={line.index} className={line.lengthOk ? undefined : "has-error"}>
               <td className="text-center text-faint">{line.index + 1}</td>
-              <td className="text-xs">{line.kind}</td>
+              <td className="text-xs">{KIND_LABEL[line.kind]}</td>
               <td className="max-w-xl truncate font-mono text-[11px]" title={line.raw}>
                 {line.raw}
               </td>
@@ -383,6 +743,110 @@ function RawPreview({
               </td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 編輯畫面用：依目前提出資料預覽控制首錄欄位（對齊固定長度 HEADER） */
+export function ControlHeaderPreview({
+  schema,
+  header,
+  branches,
+}: {
+  schema: FormatSchema;
+  header: Record<string, string>;
+  branches: Branch[];
+}) {
+  const values: Record<string, string> = {
+    BOF: "BOF",
+    CDATA: schema.code,
+    TDATE: header.date ?? "",
+    TTIME: "（產生時）",
+    SORG: resolveSorg(header.bankCode ?? "", branches),
+    RORG:
+      schema.records.header.fields.find((f) => f.id === "RORG")?.value ??
+      "9990250",
+    VERNO: schema.version,
+  };
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="data-table text-xs">
+        <thead>
+          <tr>
+            <th>欄位</th>
+            <th>ID</th>
+            <th>長度</th>
+            <th>值</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schema.records.header.fields
+            .filter((f) => f.id !== "FILLER")
+            .map((f) => (
+              <tr key={f.id}>
+                <td className="whitespace-nowrap">{f.label || f.id}</td>
+                <td className="font-mono">{f.id}</td>
+                <td className="text-center">{f.length}</td>
+                <td className="font-mono">{values[f.id] || "—"}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function ControlTrailerPreview({
+  schema,
+  header,
+  totalCount,
+  totalAmount,
+  branches,
+}: {
+  schema: FormatSchema;
+  header: Record<string, string>;
+  totalCount: number;
+  totalAmount: number;
+  branches: Branch[];
+}) {
+  const values: Record<string, string> = {
+    EOF: "EOF",
+    CDATA: schema.code,
+    TDATE: header.date ?? "",
+    SORG: resolveSorg(header.bankCode ?? "", branches),
+    RORG:
+      schema.records.trailer.fields.find((f) => f.id === "RORG")?.value ??
+      "9990250",
+    TCOUNT: String(totalCount),
+    TAMT: String(Math.floor(totalAmount)),
+    YDATE: "（空白）",
+  };
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="data-table text-xs">
+        <thead>
+          <tr>
+            <th>欄位</th>
+            <th>ID</th>
+            <th>長度</th>
+            <th>值</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schema.records.trailer.fields
+            .filter((f) => f.id !== "FILLER")
+            .map((f) => (
+              <tr key={f.id}>
+                <td className="whitespace-nowrap">{f.label || f.id}</td>
+                <td className="font-mono">{f.id}</td>
+                <td className="text-center">{f.length}</td>
+                <td className="font-mono">{values[f.id] ?? "—"}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

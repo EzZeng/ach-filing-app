@@ -20,7 +20,7 @@
     "header": [
       {
         "key": "date",
-        "label": "處理日期（民國）",
+        "label": "處理日期",
         "placeholder": "01151231",
         "inputType": "rocDate",
         "length": 8,
@@ -171,7 +171,7 @@
       },
       {
         "key": "ydate",
-        "label": "前一營業日（民國）",
+        "label": "前一營業日日期",
         "placeholder": "01150803",
         "inputType": "rocDate",
         "length": 8,
@@ -694,7 +694,7 @@
           "source": "filler",
           "length": 210,
           "fill": " ",
-          "label": "空白"
+          "label": "備用"
         }
       ]
     },
@@ -927,7 +927,7 @@
           "source": "filler",
           "length": 39,
           "fill": " ",
-          "label": "空白"
+          "label": "備用"
         }
       ]
     },
@@ -1013,7 +1013,7 @@
           "source": "filler",
           "length": 187,
           "fill": " ",
-          "label": "空白"
+          "label": "備用"
         }
       ]
     }

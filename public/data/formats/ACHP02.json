@@ -432,7 +432,7 @@
           "source": "filler",
           "length": 193,
           "fill": " ",
-          "label": "空白"
+          "label": "備用"
         }
       ]
     },
@@ -611,7 +611,7 @@
           "source": "filler",
           "length": 209,
           "fill": " ",
-          "label": "空白"
+          "label": "備用"
         }
       ]
     }

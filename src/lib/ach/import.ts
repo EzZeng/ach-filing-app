@@ -5,7 +5,7 @@ import type {
   RecordFieldDef,
 } from "./schema";
 import { emptyDetailRow, emptyHeader } from "./engine";
-import { newRowId } from "./utils";
+import { newRowId, toHalfWidthAlnum } from "./utils";
 import {
   emptyDetailFilters,
   hasActiveFilters,
@@ -153,6 +153,11 @@ function unpadField(raw: string, def: RecordFieldDef): string {
     s = s.replace(/[ \t]+$/g, "");
   }
 
+  // 文數字欄位：全形英數字轉半形（不在此過濾，避免匯入預覽丟字）
+  if (def.charset === "alnum" || def.charset === "digit") {
+    s = toHalfWidthAlnum(s);
+  }
+
   return s;
 }
 
@@ -200,8 +205,12 @@ function detailRowFromFields(
   for (const f of schema.form.detail) {
     row[f.key] = values[f.key] ?? "";
   }
-  // 預覽用：附帶非表單編輯、但檢視時常需要的欄位
+  // 以欄位 ID 再對一次，避免 source/key 對應疏漏（CNO→userNo）
   for (const f of fields) {
+    if (f.id === "CNO") {
+      const v = (f.value ?? "").trim();
+      if (v) row.userNo = v;
+    }
     if (f.id === "SEQ" && f.value) row.seq = f.value;
     if (f.id === "TXTYPE" && f.value) row.txType = f.value;
     if (f.id === "TYPE" && f.value) row.type = f.value;
@@ -332,7 +341,11 @@ function consumeLine(acc: ParseAcc, raw: string, index: number): void {
       : null;
 
   if (kind === "header" || kind === "trailer") {
-    const fields = section ? parseRecordFields(raw, section) : [];
+    let line = raw;
+    if (line.length < acc.schema.recordLength) {
+      line = line + " ".repeat(acc.schema.recordLength - line.length);
+    }
+    const fields = section ? parseRecordFields(line, section) : [];
     const sample: ParsedLine = {
       index,
       kind,
@@ -369,7 +382,13 @@ function consumeLine(acc: ParseAcc, raw: string, index: number): void {
     return;
   }
 
-  const fields = section ? parseRecordFields(raw, section) : [];
+  // 固定長度以「位元組／字元一對一」切片；尾端不足則右補空白，避免 CNO 等後段欄讀成空
+  let line = raw;
+  if (line.length < acc.schema.recordLength) {
+    line = line + " ".repeat(acc.schema.recordLength - line.length);
+  }
+
+  const fields = section ? parseRecordFields(line, section) : [];
   if (acc.detailSamples.length < IMPORT_LIMITS.maxDetailLineSamples) {
     acc.detailSamples.push({
       index,
@@ -556,7 +575,8 @@ export async function parseAchFile(
   }
 
   const reader = file.stream().getReader();
-  const decoder = new TextDecoder("utf-8");
+  // ACH 固定長度以 byte 定位；用 latin1 讓 1 byte = 1 JS char，避免 UTF-8 多位元組位移
+  const decoder = new TextDecoder("latin1");
   let buf = "";
   let bytesRead = 0;
   let lineIndex = 0;

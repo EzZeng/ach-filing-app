@@ -120,6 +120,8 @@ export function SchemaPanel() {
   const { formats, formatList } = useRefStore();
   const list = formatList();
   const [code, setCode] = useState(list[0]?.code ?? "ACHP01");
+  /** JSON 原始定義預設隱藏，避免佔滿畫面 */
+  const [showJson, setShowJson] = useState(false);
   const schema = formats[code];
 
   const lengthCheck = useMemo(
@@ -232,10 +234,26 @@ export function SchemaPanel() {
       </div>
 
       <div className="card p-4">
-        <h3 className="mb-2 font-bold">JSON 原始定義（唯讀預覽）</h3>
-        <pre className="max-h-96 overflow-auto rounded-lg bg-header p-3 font-mono text-[11px] leading-relaxed text-header-fg">
-          {JSON.stringify(schema, null, 2)}
-        </pre>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-bold">JSON 原始定義（唯讀預覽）</h3>
+          <button
+            type="button"
+            className="btn btn-secondary text-sm"
+            onClick={() => setShowJson((v) => !v)}
+            aria-expanded={showJson}
+          >
+            {showJson ? "隱藏 JSON" : "顯示 JSON"}
+          </button>
+        </div>
+        {showJson ? (
+          <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-header p-3 font-mono text-[11px] leading-relaxed text-header-fg">
+            {JSON.stringify(schema, null, 2)}
+          </pre>
+        ) : (
+          <p className="mt-2 text-sm text-muted">
+            預設隱藏，避免佔用畫面；需要對照原始定義時再展開。
+          </p>
+        )}
       </div>
     </div>
   );

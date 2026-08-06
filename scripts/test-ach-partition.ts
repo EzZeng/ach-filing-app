@@ -150,6 +150,43 @@ assert.ok(editPlan.sizes.every((n) => n <= 5_000));
 const firstParsed = parsePartToForm(p01, parts[0]!.content, parts[0]!.filename);
 assert.ok(firstParsed.detailCount > 0);
 assert.ok(firstParsed.rows.length >= firstParsed.detailCount);
+// 交易代號以該包明細第一筆 TXID 為準
+assert.equal(firstParsed.header.txid, "704");
+assert.equal(index.header.txid, "704");
+
+// 明細第一筆 TXID 變更後，分割／載入應跟第一筆走（非舊表頭殘值）
+{
+  const lines = generated.content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n");
+  const d0 = lines[1]!;
+  // TXID 位於明細 offset 3–5（TYPE+TXTYPE 之後）
+  const mutated =
+    d0.slice(0, 3) + "705" + d0.slice(6);
+  lines[1] = mutated;
+  const mutatedFile = new File([lines.join("\r\n") + "\r\n"], "txid-first.txt");
+  const mutatedParts: { filename: string; content: string }[] = [];
+  const mutatedIndex = await partitionAchFile(
+    mutatedFile,
+    p01,
+    EMBEDDED_TXIDS,
+    EMBEDDED_BRANCHES,
+    {
+      partCount: 2,
+      onPartition: (p) => {
+        mutatedParts.push({ filename: p.filename, content: p.content });
+      },
+    },
+  );
+  assert.equal(mutatedIndex.header.txid, "705");
+  const loaded = parsePartToForm(
+    p01,
+    mutatedParts[0]!.content,
+    mutatedParts[0]!.filename,
+  );
+  assert.equal(loaded.header.txid, "705");
+}
 
 usePartitionStore.getState().startSession({
   formatCode: "ACHP01",

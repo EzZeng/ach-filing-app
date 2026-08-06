@@ -465,6 +465,9 @@ function consumeLine(acc: ParseAcc, raw: string, index: number): void {
   collectMatchedRow(acc, row);
 }
 
+/** 提出資料中應以「明細第一筆」為準的欄位（ACHP01：TXID／PCLNO／CID） */
+const HEADER_FROM_FIRST_DETAIL = new Set(["txid", "account", "taxId"]);
+
 function finalizeHeader(acc: ParseAcc): HeaderValues {
   const header: HeaderValues = emptyHeader(acc.schema);
   if (acc.headerLine) {
@@ -476,7 +479,11 @@ function finalizeHeader(acc: ParseAcc): HeaderValues {
       "header",
     );
     for (const [k, v] of Object.entries(fromDetail)) {
-      if (!header[k]) header[k] = v;
+      if (!v) continue;
+      // 交易代號等：分割／匯入後一律以明細第一筆為主
+      if (HEADER_FROM_FIRST_DETAIL.has(k) || !header[k]) {
+        header[k] = v;
+      }
     }
   }
 

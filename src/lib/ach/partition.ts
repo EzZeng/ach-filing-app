@@ -526,7 +526,14 @@ export async function partitionAchFile(
       if (!enriched) {
         const fields = parseRecordFields(line, schema.records.detail.fields);
         for (const f of fields) {
-          if (f.source === "header" && f.key && !header[f.key]) {
+          if (f.source !== "header" || !f.key || !f.value) continue;
+          // 交易代號／提出帳號／統編：以全檔明細第一筆為準；其餘僅補空值
+          if (
+            f.key === "txid" ||
+            f.key === "account" ||
+            f.key === "taxId" ||
+            !header[f.key]
+          ) {
             header[f.key] = f.value;
           }
         }

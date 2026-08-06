@@ -531,7 +531,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       window.setTimeout(resolve, 180);
     });
     setImportResult(null);
-    setImportFile(null);
+    // 保留 importFile，供「分割來源檔」繼續使用
     toast.success(
       `已匯入 ${result.schema.code}（${result.matchedCount.toLocaleString("zh-TW")} 筆明細），可進行檢核與加工`,
     );
@@ -539,7 +539,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   function closeImportPreview() {
     setImportResult(null);
-    setImportFile(null);
+    // 未套用時關閉才清掉來源檔；已套用後由重新上傳覆蓋
   }
 
   const selectOptions = (field: FormFieldDef) => {

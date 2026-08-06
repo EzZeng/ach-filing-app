@@ -3,10 +3,11 @@
  * 大檔分割後逐包載入表單編輯 → 存回 → 合併輸出
  */
 import { create } from "zustand";
-import { generateFromSchema, isRowEmpty } from "./engine";
+import { isRowEmpty } from "./engine";
 import { parseAchText } from "./import";
 import {
   mergeAchPartitions,
+  rebuildPartitionPreservingDetails,
   type PartitionIndex,
   type PartitionEntry,
 } from "./partition";
@@ -181,18 +182,25 @@ export const usePartitionStore = create<PartitionStore>((set, get) => ({
         `格式不符：工作區 ${session.formatCode}，目前 ${schema.code}`,
       );
     }
-    const generated = generateFromSchema(
+    const active = session.parts[session.activeIndex];
+    if (!active) throw new Error("找不到作用中的分割包");
+    // 在原始明細列上 patch，保留 NOTE／MEMO 等非表單欄位
+    const rebuilt = rebuildPartitionPreservingDetails(
       schema,
+      active.content,
       header,
       rows,
       txids,
       branches,
     );
-    get().updatePartContent(session.activeIndex, generated.content, {
-      detailCount: generated.count,
-      amount: generated.amount,
+    get().updatePartContent(session.activeIndex, rebuilt.content, {
+      detailCount: rebuilt.detailCount,
+      amount: rebuilt.amount,
     });
-    return { detailCount: generated.count, amount: generated.amount };
+    return {
+      detailCount: rebuilt.detailCount,
+      amount: rebuilt.amount,
+    };
   },
 }));
 

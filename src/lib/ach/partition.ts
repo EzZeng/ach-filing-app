@@ -12,7 +12,12 @@ import {
   type ConvertP01ToR01Options,
   type ConvertedR01File,
 } from "./convertR01";
-import { buildRecord, emptyHeader, lookupTxid } from "./engine";
+import {
+  buildRecord,
+  emptyHeader,
+  isRowEmpty,
+  lookupTxid,
+} from "./engine";
 import {
   IMPORT_LIMITS,
   parseRecordFields,
@@ -23,6 +28,7 @@ import type {
   DetailRow,
   FormatSchema,
   HeaderValues,
+  RecordFieldDef,
   Txid,
 } from "./schema";
 import { newRowId, safeDigits } from "./utils";
@@ -286,6 +292,165 @@ function buildPartitionContent(
   return (
     [headerLine, ...detailLines, trailer].join(ending) + ending
   );
+}
+
+/** 固定長度列右補空白至 recordLength（合併／讀檔時尾端空白常被吃掉） */
+export function padRecordLine(line: string, recordLength: number): string {
+  if (line.length === recordLength) return line;
+  if (line.length > recordLength) return line.slice(0, recordLength);
+  return line + " ".repeat(recordLength - line.length);
+}
+
+/** 以 latin1 讀取 File，避免 UTF-8 解碼造成固定長度位移 */
+export async function readFileAsLatin1(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  return new TextDecoder("latin1").decode(buf);
+}
+
+function fitFieldPiece(piece: string, def: RecordFieldDef): string {
+  const len = def.length;
+  if (piece.length === len) return piece;
+  if (piece.length > len) return piece.slice(0, len);
+  const padChar =
+    def.pad?.char ??
+    (def.charset === "digit" || def.pad?.side === "left" ? "0" : " ");
+  if (def.pad?.side === "left" || def.charset === "digit") {
+    return padChar.repeat(len - piece.length) + piece;
+  }
+  return piece + " ".repeat(len - piece.length);
+}
+
+/**
+ * 在「原始明細列」上只覆寫表單相關欄位，保留 filler／專用區等原始內容。
+ * （避免 generateFromSchema 整列重寫把 NOTE／MEMO 等吃成空白）
+ */
+export function patchDetailLine(
+  schema: FormatSchema,
+  rawLine: string,
+  opts: {
+    header: HeaderValues;
+    detail: DetailRow;
+    seq: number;
+    totalCount: number;
+    totalAmount: number;
+    txids: Txid[];
+    branches: Branch[];
+  },
+): string {
+  const rl = schema.recordLength;
+  const base = padRecordLine(rawLine, rl);
+  const ctx = {
+    schema,
+    header: opts.header,
+    detail: opts.detail,
+    seq: opts.seq,
+    totalCount: opts.totalCount,
+    totalAmount: opts.totalAmount,
+    txids: opts.txids,
+    branches: opts.branches,
+  };
+
+  let offset = 0;
+  let out = "";
+  for (const def of schema.records.detail.fields) {
+    const rawSlice = base.slice(offset, offset + def.length);
+    // filler／runtime：保留原始切片（發動者專用區、備註等）
+    if (def.source === "filler" || def.source === "runtime") {
+      out += padRecordLine(rawSlice, def.length);
+    } else {
+      const piece = fitFieldPiece(buildRecord([def], ctx), def);
+      out += piece;
+    }
+    offset += def.length;
+  }
+  return padRecordLine(out, rl);
+}
+
+/**
+ * 以表單資料存回分割包：控制首／尾錄重算，明細在原始列上 patch。
+ */
+export function rebuildPartitionPreservingDetails(
+  schema: FormatSchema,
+  originalContent: string,
+  header: HeaderValues,
+  rows: DetailRow[],
+  txids: Txid[],
+  branches: Branch[],
+): { content: string; detailCount: number; amount: number } {
+  const ending = endingOf(schema);
+  const amountKey = schema.features.amountKey;
+  const nonEmpty = rows.filter((r) => !isRowEmpty(r, schema));
+  const rawDetails = extractDetailLines(originalContent).map((l) =>
+    padRecordLine(l, schema.recordLength),
+  );
+
+  let totalAmount = 0;
+  if (amountKey) {
+    for (const r of nonEmpty) {
+      totalAmount += Number(r[amountKey]) || 0;
+    }
+  }
+
+  const details: string[] = [];
+  let seq = 1;
+  for (let i = 0; i < nonEmpty.length; i++) {
+    const row = nonEmpty[i]!;
+    const raw = rawDetails[i];
+    if (raw) {
+      details.push(
+        patchDetailLine(schema, raw, {
+          header,
+          detail: row,
+          seq,
+          totalCount: nonEmpty.length,
+          totalAmount,
+          txids,
+          branches,
+        }),
+      );
+    } else {
+      // 表單新增列：無原始列可保留，才整列產生
+      details.push(
+        buildRecord(schema.records.detail.fields, {
+          schema,
+          header,
+          detail: row,
+          seq,
+          totalCount: nonEmpty.length,
+          totalAmount,
+          txids,
+          branches,
+        }),
+      );
+    }
+    seq += 1;
+  }
+
+  const headerLine = buildRecord(schema.records.header.fields, {
+    schema,
+    header,
+    seq: 0,
+    totalCount: nonEmpty.length,
+    totalAmount,
+    txids,
+    branches,
+  });
+  const trailer = buildTrailerLine(
+    schema,
+    header,
+    nonEmpty.length,
+    totalAmount,
+    txids,
+    branches,
+  );
+
+  const content =
+    [headerLine, ...details, trailer].join(ending) + ending;
+  return {
+    content,
+    detailCount: nonEmpty.length,
+    amount: totalAmount,
+  };
 }
 
 type LineHandler = (line: string, lineIndex: number) => void | Promise<void>;
@@ -584,7 +749,7 @@ function asPartMap(
   return parts instanceof Map ? parts : new Map(Object.entries(parts));
 }
 
-function extractDetailLines(text: string): string[] {
+function extractDetailLines(text: string, recordLength?: number): string[] {
   // 固定長度列尾常為空白 FILLER，不可 trimEnd
   const lines = text
     .replace(/^\uFEFF/, "")
@@ -593,7 +758,11 @@ function extractDetailLines(text: string): string[] {
     .replace(/\n$/, "")
     .split("\n")
     .filter((l) => l.length > 0);
-  return lines.filter((l) => !l.startsWith("BOF") && !l.startsWith("EOF"));
+  const details = lines.filter(
+    (l) => !l.startsWith("BOF") && !l.startsWith("EOF"),
+  );
+  if (!recordLength) return details;
+  return details.map((l) => padRecordLine(l, recordLength));
 }
 
 /**
@@ -621,7 +790,7 @@ export function mergeAchPartitions(
     if (text == null) {
       throw new Error(`缺少分割檔：${entry.filename}`);
     }
-    const lines = extractDetailLines(text);
+    const lines = extractDetailLines(text, schema.recordLength);
     if (lines.length !== entry.detailCount) {
       throw new Error(
         `${entry.filename} 明細 ${lines.length} 筆，與索引 ${entry.detailCount} 不符`,
@@ -935,7 +1104,7 @@ export function convertMergedP01PartitionsToR01(
   for (const entry of ordered) {
     const text = map.get(entry.filename);
     if (text == null) throw new Error(`缺少分割檔：${entry.filename}`);
-    const lines = extractDetailLines(text);
+    const lines = extractDetailLines(text, p01Schema.recordLength);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       const fields = parseRecordFields(line, p01Schema.records.detail.fields);

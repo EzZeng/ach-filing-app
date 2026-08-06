@@ -43,6 +43,7 @@ import {
   partitionIndexFilename,
   planPartitions,
   planPartitionsForEdit,
+  readFileAsLatin1,
   stringifyPartitionIndex,
   type PartitionIndex,
   type PartitionProgress,
@@ -247,7 +248,8 @@ export function PartitionToolsDialog({
       const parts = new Map<string, string>();
       for (const f of mergeFiles) {
         if (f.name.toLowerCase().endsWith(".json")) continue;
-        parts.set(f.name, await f.text());
+        // latin1：固定長度尾端空白不被 UTF-8／trim 弄丟
+        parts.set(f.name, await readFileAsLatin1(f));
       }
 
       if (mergeConvert && index.formatCode === "ACHP01") {

@@ -539,7 +539,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
 
   function closeImportPreview() {
     setImportResult(null);
-    // 未套用時關閉才清掉來源檔；已套用後由重新上傳覆蓋
+    setImportFile(null);
   }
 
   const selectOptions = (field: FormFieldDef) => {

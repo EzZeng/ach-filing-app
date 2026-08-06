@@ -16,6 +16,7 @@ import {
   planPartitionSizes,
   planPartitions,
   planPartitionsForEdit,
+  rebuildPartitionPreservingDetails,
   stringifyPartitionIndex,
 } from "../src/lib/ach/partition";
 import {
@@ -212,6 +213,109 @@ const fromSession = mergeSessionToFile(
 );
 assert.equal(fromSession.detailCount, 7);
 usePartitionStore.getState().clearSession();
+
+// 存回／合併不得吃掉原始明細 filler（NOTE／MEMO 等非表單欄位）
+{
+  const lines = generated.content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n");
+  // NOTE：CNO(20) 之後 40 bytes；累計 offset 1+2+3+8+7+16+7+16+10+2+1+10+10+6+8+8+1+20 = 136
+  const noteStart = 136;
+  const noteMarker = "KEEP-NOTE-DATA-SHOULD-SURVIVE!!!!!"; // 33 chars
+  const memoMarker = "MEMO123456"; // 10
+  for (let i = 1; i < lines.length - 1; i++) {
+    const d = lines[i]!;
+    lines[i] =
+      d.slice(0, noteStart) +
+      noteMarker.padEnd(40, " ") +
+      memoMarker +
+      d.slice(noteStart + 50);
+  }
+  const withNote = lines.join("\r\n") + "\r\n";
+  assert.ok(withNote.includes(noteMarker));
+
+  const noteParts: { filename: string; content: string }[] = [];
+  const noteIndex = await partitionAchFile(
+    new File([withNote], "with-note-p01.txt"),
+    p01,
+    EMBEDDED_TXIDS,
+    EMBEDDED_BRANCHES,
+    {
+      partCount: 2,
+      onPartition: (p) => {
+        noteParts.push({ filename: p.filename, content: p.content });
+      },
+    },
+  );
+  // 分割後 NOTE 仍在
+  for (const p of noteParts) {
+    assert.ok(
+      p.content.includes(noteMarker),
+      `${p.filename} 分割後遺失 NOTE`,
+    );
+    assert.ok(
+      p.content.includes(memoMarker),
+      `${p.filename} 分割後遺失 MEMO`,
+    );
+  }
+
+  // 模擬表單載入→存回（舊行為 generateFromSchema 會把 NOTE 洗成空白）
+  const loaded0 = parsePartToForm(
+    p01,
+    noteParts[0]!.content,
+    noteParts[0]!.filename,
+  );
+  const rebuilt0 = rebuildPartitionPreservingDetails(
+    p01,
+    noteParts[0]!.content,
+    loaded0.header,
+    loaded0.rows,
+    EMBEDDED_TXIDS,
+    EMBEDDED_BRANCHES,
+  );
+  assert.ok(
+    rebuilt0.content.includes(noteMarker),
+    "存回分割包後 NOTE 被吃掉",
+  );
+  assert.ok(
+    rebuilt0.content.includes(memoMarker),
+    "存回分割包後 MEMO 被吃掉",
+  );
+  // 表單可改的欄位仍應寫入（金額）
+  const rebuiltLines = rebuilt0.content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n");
+  const firstDetail = rebuiltLines[1]!;
+  assert.equal(firstDetail.slice(noteStart, noteStart + 40).trimEnd(), noteMarker);
+  assert.equal(firstDetail.slice(noteStart + 40, noteStart + 50), memoMarker);
+
+  noteParts[0] = { ...noteParts[0]!, content: rebuilt0.content };
+
+  const noteMerged = mergeAchPartitions(
+    p01,
+    {
+      index: noteIndex,
+      parts: Object.fromEntries(noteParts.map((p) => [p.filename, p.content])),
+    },
+    EMBEDDED_TXIDS,
+    EMBEDDED_BRANCHES,
+  );
+  assert.equal(noteMerged.detailCount, 7);
+  assert.ok(noteMerged.content.includes(noteMarker), "合併後 NOTE 被吃掉");
+  assert.ok(noteMerged.content.includes(memoMarker), "合併後 MEMO 被吃掉");
+  // 每一明細列都應保留 NOTE
+  const mergedDetailLines = noteMerged.content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n")
+    .filter((l) => !l.startsWith("BOF") && !l.startsWith("EOF"));
+  for (const dl of mergedDetailLines) {
+    assert.equal(dl.slice(noteStart, noteStart + 40).trimEnd(), noteMarker);
+    assert.equal(dl.slice(noteStart + 40, noteStart + 50), memoMarker);
+  }
+}
 
 console.log(
   "OK partition/merge/convert-large/edit-session: parts=",

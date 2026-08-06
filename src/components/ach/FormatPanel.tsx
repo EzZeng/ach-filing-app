@@ -1,24 +1,39 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
-  FileDown,
-  FileUp,
-  Plus,
-  Trash2,
-  Search,
-  Eraser,
-  AlertTriangle,
-  CheckCircle2,
-  FilterX,
-  FileCode2,
-  FileText,
-  Globe,
-  Upload,
-  ArrowRight,
-  ArrowRightLeft,
-  Combine,
-  Loader2,
-  Scissors,
-} from "lucide-react";
+  Backdrop,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Chip,
+  CircularProgress,
+  LinearProgress,
+  Paper,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
+import {
+  FileDownload as FileDownIcon,
+  FileUpload as FileUpIcon,
+  Add as PlusIcon,
+  DeleteOutlined as TrashIcon,
+  Search as SearchIcon,
+  DeleteSweep as EraserIcon,
+  WarningAmber as AlertTriangleIcon,
+  CheckCircle as CheckCircleIcon,
+  FilterAltOff as FilterXIcon,
+  Code as FileCodeIcon,
+  Description as FileTextIcon,
+  Language as GlobeIcon,
+  CloudUpload as UploadIcon,
+  ArrowForward as ArrowRightIcon,
+  SwapHoriz as ArrowRightLeftIcon,
+  MergeType as CombineIcon,
+  ContentCut as ScissorsIcon,
+} from "@mui/icons-material";
 import { toast } from "sonner";
 import { useFormStore, useRefStore } from "@/lib/ach/store";
 import type { FormatSchema, FormFieldDef } from "@/lib/ach/schema";
@@ -79,10 +94,10 @@ type Props = {
   onSelectFormat?: (code: string) => void;
 };
 
-const FORMAT_ICONS: Record<ExportFormatId, typeof FileText> = {
-  txt: FileText,
-  html: Globe,
-  js: FileCode2,
+const FORMAT_ICONS: Record<ExportFormatId, typeof FileTextIcon> = {
+  txt: FileTextIcon,
+  html: GlobeIcon,
+  js: FileCodeIcon,
 };
 
 const hiddenFileInputStyle: CSSProperties = {
@@ -548,54 +563,47 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
     />
   );
 
+  const progressPct =
+    importProgress && importProgress.totalBytes > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (importProgress.bytesRead / importProgress.totalBytes) * 100,
+          ),
+        )
+      : 0;
+
   // 初次上傳用全畫面 mask；預覽對話框內的篩選重掃改由對話框自家 mask 顯示
   const importLoadingMask =
     importProgress && !importResult ? (
-      <div
-        className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/45 p-4 backdrop-blur-[1px]"
+      <Backdrop
+        open
+        sx={{ zIndex: (t) => t.zIndex.modal + 1, color: "#fff" }}
         role="status"
         aria-live="polite"
       >
-        <div className="card flex w-full max-w-sm flex-col items-center gap-3 px-6 py-8 text-center">
-          <Loader2 className="size-9 animate-spin text-primary" />
-          <p className="text-sm font-semibold text-fg">串流讀取檔案中…</p>
-          <p className="text-xs text-muted">
-            已讀{" "}
-            {importProgress.totalBytes > 0
-              ? `${Math.min(
-                  100,
-                  Math.round(
-                    (importProgress.bytesRead / importProgress.totalBytes) *
-                      100,
-                  ),
-                )}%`
-              : "…"}
+        <Paper sx={{ width: "100%", maxWidth: 360, p: 3, textAlign: "center" }}>
+          <CircularProgress color="primary" sx={{ mb: 2 }} />
+          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700 }}>
+            串流讀取檔案中…
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            已讀 {importProgress.totalBytes > 0 ? `${progressPct}%` : "…"}
             {" · "}
             明細 {importProgress.detailCount.toLocaleString("zh-TW")} 筆
             {" · "}
             列 {importProgress.linesRead.toLocaleString("zh-TW")}
-          </p>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-            <div
-              className="h-full bg-primary transition-[width] duration-150"
-              style={{
-                width: `${
-                  importProgress.totalBytes > 0
-                    ? Math.min(
-                        100,
-                        (importProgress.bytesRead / importProgress.totalBytes) *
-                          100,
-                      )
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
-          <p className="text-[11px] text-faint">
+          </Typography>
+          <LinearProgress
+            variant={importProgress.totalBytes > 0 ? "determinate" : "indeterminate"}
+            value={progressPct}
+            sx={{ mb: 1.5, borderRadius: 1 }}
+          />
+          <Typography variant="caption" color="text.disabled">
             大檔採逐列串流，不會一次載入整份到記憶體
-          </p>
-        </div>
-      </div>
+          </Typography>
+        </Paper>
+      </Backdrop>
     ) : null;
 
   const importDialog = (
@@ -678,33 +686,34 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
   // —— 預設：引導先上傳既有 P01／P02，隱藏新建表單 ——
   if (!workspaceOpen) {
     return (
-      <div className="space-y-4">
+      <Stack spacing={2}>
         {importLoadingMask}
-        <div className="card overflow-hidden">
-          <div className="border-b border-border bg-surface-2/60 px-4 py-4 sm:px-5">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="badge badge-ok font-mono">{schema.code}</span>
-              <span className="badge badge-warn">
-                V{schema.version.replace(/^V/i, "")}
-              </span>
-              <span className="text-xs text-muted">列長 {schema.recordLength}</span>
-            </div>
-            <h2 className="text-lg font-bold text-fg">
-              {schema.shortCode} {schema.name}・檢核與加工
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-              本工具以既有財金 ACH 固定長度檔（P01 代收／代付、P02 授權）為主：
-              先上傳檔案檢核欄位與列長，再視需要修正後重新產出。
-            </p>
-          </div>
-
-          <div className="px-4 py-8 sm:px-8">
-            <div
-              className={`mx-auto flex max-w-xl flex-col items-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition ${
-                dragOver
-                  ? "border-primary bg-primary-soft/40"
-                  : "border-border-strong bg-surface-2/40"
-              }`}
+        <Card>
+          <CardHeader
+            title={`${schema.shortCode} ${schema.name}・檢核與加工`}
+            subheader="本工具以既有財金 ACH 固定長度檔為主：先上傳檢核，再視需要修正後重新產出。"
+            avatar={
+              <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+                <Chip size="small" color="success" label={schema.code} sx={{ fontFamily: "monospace" }} />
+                <Chip
+                  size="small"
+                  color="warning"
+                  label={`V${schema.version.replace(/^V/i, "")}`}
+                />
+                <Chip size="small" variant="outlined" label={`列長 ${schema.recordLength}`} />
+              </Stack>
+            }
+            sx={{
+              alignItems: "flex-start",
+              "& .MuiCardHeader-avatar": { marginRight: 0, mb: 1 },
+              bgcolor: "grey.50",
+              borderBottom: 1,
+              borderColor: "divider",
+            }}
+          />
+          <CardContent sx={{ py: 4 }}>
+            <Paper
+              variant="outlined"
               onDragEnter={(e) => {
                 e.preventDefault();
                 setDragOver(true);
@@ -723,256 +732,285 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                 const file = e.dataTransfer.files?.[0];
                 if (file) void handleImportFile(file);
               }}
+              sx={{
+                mx: "auto",
+                maxWidth: 560,
+                p: { xs: 3, sm: 5 },
+                textAlign: "center",
+                borderStyle: "dashed",
+                borderWidth: 2,
+                borderColor: dragOver ? "primary.main" : "divider",
+                bgcolor: dragOver ? "action.selected" : "grey.50",
+                transition: "border-color 150ms, background 150ms",
+              }}
             >
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary-soft text-primary">
-                <Upload className="size-7" />
-              </div>
-              <h3 className="text-base font-bold text-fg">請先上傳既有 ACH 檔</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">
-                選擇或拖放 <code className="font-mono text-xs text-fg">.txt</code>{" "}
+              <Box
+                sx={{
+                  width: 64,
+                  height: 64,
+                  mx: "auto",
+                  mb: 2,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: "action.hover",
+                  color: "primary.main",
+                }}
+              >
+                <UploadIcon fontSize="large" color="primary" />
+              </Box>
+              <Typography variant="h6" gutterBottom>
+                請先上傳既有 ACH 檔
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                選擇或拖放 <Box component="code" sx={{ fontFamily: "monospace" }}>.txt</Box>{" "}
                 固定長度上傳檔（BOF 列 CDATA 為{" "}
-                <span className="font-mono text-fg">{schema.code}</span> 或其他已支援代號）。
-                上傳後可預覽、檢核並加工後再匯出。
-              </p>
-              <button
-                type="button"
-                className="btn btn-primary mt-6"
+                <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>
+                  {schema.code}
+                </Box>{" "}
+                或其他已支援代號）。
+              </Typography>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<FileUpIcon />}
+                endIcon={<ArrowRightIcon />}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <FileUp className="size-4" />
                 選擇檔案上傳
-                <ArrowRight className="size-4 opacity-80" />
-              </button>
+              </Button>
               {fileInput}
-              <ol className="mt-8 w-full max-w-sm space-y-2 text-left text-xs text-muted">
-                <li className="flex gap-2">
-                  <span className="font-mono font-bold text-primary">1</span>
+              <Stack
+                component="ol"
+                spacing={1}
+                sx={{
+                  mt: 4,
+                  mx: "auto",
+                  maxWidth: 360,
+                  pl: 2.5,
+                  textAlign: "left",
+                  color: "text.secondary",
+                  typography: "caption",
+                }}
+              >
+                <Typography component="li" variant="caption">
                   上傳既有 P01／P02（.txt）
-                </li>
-                <li className="flex gap-2">
-                  <span className="font-mono font-bold text-primary">2</span>
+                </Typography>
+                <Typography component="li" variant="caption">
                   預覽並確認表頭／明細／列長
-                </li>
-                <li className="flex gap-2">
-                  <span className="font-mono font-bold text-primary">3</span>
+                </Typography>
+                <Typography component="li" variant="caption">
                   檢核錯誤、修正後重新產生上傳檔
-                </li>
-              </ol>
-            </div>
+                </Typography>
+              </Stack>
+            </Paper>
 
-            <div className="mx-auto mt-6 max-w-xl text-center">
-              <button
-                type="button"
-                className="btn btn-ghost text-xs"
+            <Box sx={{ mt: 3, textAlign: "center" }}>
+              <Button
+                variant="text"
+                size="small"
                 onClick={() => {
                   openManualWorkspace(schema);
                   toast.message("已開啟空白表單（進階／新建）");
                 }}
               >
                 進階：不匯入，手動新建空白表單
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
 
         {importDialog}
         {partitionDialog}
-      </div>
+      </Stack>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <Stack spacing={2}>
       {importLoadingMask}
       {partitionBar}
-      <div className="card p-4 sm:p-5">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="badge badge-ok font-mono">{schema.code}</span>
-              <span className="badge badge-warn">
-                V{schema.version.replace(/^V/i, "")}
-              </span>
-              <span className="text-xs text-muted">列長 {schema.recordLength}</span>
-              {workspace.source === "import" && (
-                <span className="badge badge-ok gap-1">
-                  <FileUp className="size-3" />
-                  已匯入
-                </span>
+      <Card>
+        <CardContent>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            sx={{ mb: 2, justifyContent: "space-between", alignItems: { sm: "flex-start" } }}
+          >
+            <Box>
+              <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap",  mb: 1 }}>
+                <Chip size="small" color="success" label={schema.code} sx={{ fontFamily: "monospace" }} />
+                <Chip
+                  size="small"
+                  color="warning"
+                  label={`V${schema.version.replace(/^V/i, "")}`}
+                />
+                <Chip size="small" variant="outlined" label={`列長 ${schema.recordLength}`} />
+                {workspace.source === "import" && (
+                  <Chip size="small" color="success" icon={<FileUpIcon />} label="已匯入" />
+                )}
+                {workspace.source === "manual" && (
+                  <Chip size="small" color="warning" label="手動新建" />
+                )}
+                {partitionSession?.formatCode === schema.code && (
+                  <Chip size="small" color="warning" icon={<ScissorsIcon />} label="分割編輯" />
+                )}
+              </Stack>
+              <Typography variant="h6" component="h2">
+                {schema.shortCode} {schema.name}・檢核與加工
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {workspace.fileName
+                  ? `來源檔：${workspace.fileName} · 檢核欄位後可重新產生上傳檔`
+                  : schema.description ||
+                    "檢核表頭／明細後產生固定長度上傳檔"}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+              <Chip color="primary" variant="outlined" label={`總筆數 ${stats.count}`} />
+              {schema.features.sumAmount && (
+                <Chip
+                  color="primary"
+                  variant="outlined"
+                  label={`總金額 ${stats.amount.toLocaleString("zh-TW")}`}
+                />
               )}
-              {workspace.source === "manual" && (
-                <span className="badge badge-warn">手動新建</span>
+              {stats.errRows > 0 ? (
+                <Chip
+                  color="error"
+                  icon={<AlertTriangleIcon />}
+                  label={`${stats.errRows} 列錯誤`}
+                />
+              ) : (
+                <Chip color="success" icon={<CheckCircleIcon />} label="明細正常" />
               )}
-              {partitionSession?.formatCode === schema.code && (
-                <span className="badge badge-warn gap-1">
-                  <Scissors className="size-3" />
-                  分割編輯
-                </span>
-              )}
-            </div>
-            <h2 className="text-lg font-bold text-fg">
-              {schema.shortCode} {schema.name}・檢核與加工
-            </h2>
-            <p className="mt-0.5 text-sm text-muted">
-              {workspace.fileName
-                ? `來源檔：${workspace.fileName} · 檢核欄位後可重新產生上傳檔`
-                : schema.description ||
-                  "檢核表頭／明細後產生固定長度上傳檔"}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="stat-pill">總筆數 {stats.count}</span>
-            {schema.features.sumAmount && (
-              <span className="stat-pill">
-                總金額 {stats.amount.toLocaleString("zh-TW")}
-              </span>
-            )}
-            {stats.errRows > 0 ? (
-              <span className="badge badge-err gap-1">
-                <AlertTriangle className="size-3" />
-                {stats.errRows} 列錯誤
-              </span>
-            ) : (
-              <span className="badge badge-ok gap-1">
-                <CheckCircle2 className="size-3" />
-                明細正常
-              </span>
-            )}
-          </div>
-        </div>
+            </Stack>
+          </Stack>
 
-        {/* 成品輸出／加工 */}
-        <div className="rounded-lg border border-border bg-surface-2/70 p-3">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <FileDown className="size-4 text-primary" />
-            <span className="text-sm font-semibold">檢核後產出</span>
-            <span className="text-xs text-muted">
-              修正資料後重新產生 TXT／HTML／JS
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {exportFormats.map((fmt) => {
-              const meta = EXPORT_FORMAT_META[fmt];
-              const Icon = FORMAT_ICONS[fmt];
-              const on = selectedExports.includes(fmt);
-              return (
-                <button
-                  key={fmt}
-                  type="button"
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    on
-                      ? "border-primary bg-primary text-primary-fg"
-                      : "border-border bg-surface text-muted hover:border-primary/40"
-                  }`}
-                  onClick={() => toggleExport(fmt)}
-                  title={meta.description}
-                >
-                  <Icon className="size-3.5" />
-                  {meta.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => void handleGenerate()}
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: "grey.50" }}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", alignItems: "center",  mb: 1.5 }} useFlexGap>
+              <FileDownIcon fontSize="small" color="primary" />
+              <Typography variant="subtitle2">檢核後產出</Typography>
+              <Typography variant="caption" color="text.secondary">
+                修正資料後重新產生 TXT／HTML／JS
+              </Typography>
+            </Stack>
+            <ToggleButtonGroup
+              size="small"
+              value={selectedExports}
+              onChange={(_, next: ExportFormatId[]) => {
+                if (next?.length) setSelectedExports(next);
+              }}
+              sx={{ mb: 2, flexWrap: "wrap", gap: 0.5 }}
             >
-              <FileDown className="size-4" />
-              產生已選格式
-              {selectedExports.length > 1
-                ? `（${selectedExports.length}）`
-                : ""}
-            </button>
-            {schema.code === "ACHP01" ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
+              {exportFormats.map((fmt) => {
+                const meta = EXPORT_FORMAT_META[fmt];
+                const Icon = FORMAT_ICONS[fmt];
+                return (
+                  <ToggleButton
+                    key={fmt}
+                    value={fmt}
+                    title={meta.description}
+                    sx={{ gap: 0.75, textTransform: "none" }}
+                  >
+                    <Icon sx={{ fontSize: 16 }} />
+                    {meta.label}
+                  </ToggleButton>
+                );
+              })}
+            </ToggleButtonGroup>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+              <Button
+                variant="contained"
+                startIcon={<FileDownIcon />}
+                onClick={() => void handleGenerate()}
+              >
+                產生已選格式
+                {selectedExports.length > 1
+                  ? `（${selectedExports.length}）`
+                  : ""}
+              </Button>
+              {schema.code === "ACHP01" ? (
+                <Button
+                  variant="outlined"
+                  startIcon={<ArrowRightLeftIcon />}
+                  onClick={() => {
+                    if (!validateFormData()) return;
+                    setConvertOpen(true);
+                  }}
+                >
+                  轉檔 R01
+                </Button>
+              ) : null}
+              <Button
+                variant="text"
+                startIcon={<CombineIcon />}
+                onClick={() => setPartitionTools({ mode: "merge" })}
+                title="依 partition-index.json 合併分割檔"
+              >
+                合併分割檔
+              </Button>
+              {importFile ? (
+                <Button
+                  variant="text"
+                  startIcon={<ScissorsIcon />}
+                  onClick={() => setPartitionTools({ mode: "split" })}
+                >
+                  分割來源檔
+                </Button>
+              ) : null}
+              {exportFormats.map((fmt) => {
+                const meta = EXPORT_FORMAT_META[fmt];
+                const Icon = FORMAT_ICONS[fmt];
+                return (
+                  <Button
+                    key={`one-${fmt}`}
+                    variant="outlined"
+                    startIcon={<Icon />}
+                    onClick={() => void handleGenerateOne(fmt)}
+                  >
+                    {meta.ext.toUpperCase()}
+                  </Button>
+                );
+              })}
+              <Button
+                variant="outlined"
+                startIcon={<FileUpIcon />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                重新上傳
+              </Button>
+              {fileInput}
+              <Button
+                variant="outlined"
+                startIcon={<PlusIcon />}
+                onClick={() => addRows(schema.code, schema, 10)}
+              >
+                新增 10 列
+              </Button>
+              <Button
+                variant="text"
+                startIcon={<EraserIcon />}
                 onClick={() => {
-                  if (!validateFormData()) return;
-                  setConvertOpen(true);
+                  clearRows(schema.code, schema);
+                  toast.message("明細已清空");
                 }}
               >
-                <ArrowRightLeft className="size-4" />
-                轉檔 R01
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => setPartitionTools({ mode: "merge" })}
-              title="依 partition-index.json 合併分割檔"
-            >
-              <Combine className="size-4" />
-              合併分割檔
-            </button>
-            {importFile ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => setPartitionTools({ mode: "split" })}
+                清空明細
+              </Button>
+              <Button
+                variant="text"
+                onClick={() => {
+                  closeWorkspace(schema);
+                  toast.message("已關閉工作區，請重新上傳檔案");
+                }}
               >
-                <Scissors className="size-4" />
-                分割來源檔
-              </button>
-            ) : null}
-            {exportFormats.map((fmt) => {
-              const meta = EXPORT_FORMAT_META[fmt];
-              const Icon = FORMAT_ICONS[fmt];
-              return (
-                <button
-                  key={`one-${fmt}`}
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => void handleGenerateOne(fmt)}
-                >
-                  <Icon className="size-4" />
-                  {meta.ext.toUpperCase()}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <FileUp className="size-4" />
-              重新上傳
-            </button>
-            {fileInput}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => addRows(schema.code, schema, 10)}
-            >
-              <Plus className="size-4" />
-              新增 10 列
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => {
-                clearRows(schema.code, schema);
-                toast.message("明細已清空");
-              }}
-            >
-              <Eraser className="size-4" />
-              清空明細
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => {
-                closeWorkspace(schema);
-                toast.message("已關閉工作區，請重新上傳檔案");
-              }}
-            >
-              關閉並回到上傳
-            </button>
-          </div>
-        </div>
-      </div>
+                關閉並回到上傳
+              </Button>
+            </Stack>
+          </Paper>
+        </CardContent>
+      </Card>
 
       <div className="card overflow-hidden">
         <div className="border-b border-border px-4 py-3">
@@ -1073,7 +1111,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
           {filterEnabled && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
               <div className="relative min-w-[12rem] max-w-sm flex-1">
-                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
+                <SearchIcon sx={{ position:"absolute", top:"50%", left:10, transform:"translateY(-50%)", fontSize:16, color:"text.disabled", pointerEvents:"none" }} />
                 <input
                   className="field-input h-8 pl-8 text-sm"
                   placeholder="全域搜尋（任一欄位包含…）"
@@ -1117,7 +1155,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                   className="btn btn-ghost h-8 gap-1 px-2 text-xs"
                   onClick={clearAllFilters}
                 >
-                  <FilterX className="size-3.5" />
+                  <FilterXIcon sx={{ fontSize: 16 }} />
                   清除篩選
                 </button>
               )}
@@ -1176,7 +1214,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                       title="清除篩選"
                       aria-label="清除篩選"
                     >
-                      <FilterX className="size-3.5" />
+                      <FilterXIcon sx={{ fontSize: 16 }} />
                     </button>
                   ) : filterEnabled ? (
                     <span className="block h-[1.7rem]" aria-hidden />
@@ -1261,7 +1299,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                                   })
                                 }
                               >
-                                <Search className="size-3.5" />
+                                <SearchIcon sx={{ fontSize: 16 }} />
                               </button>
                             )}
                           </div>
@@ -1283,7 +1321,7 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
                           onClick={() => removeRow(schema.code, row.id)}
                           aria-label="刪除列"
                         >
-                          <Trash2 className="size-3.5" />
+                          <TrashIcon sx={{ fontSize: 16 }} />
                         </button>
                       </td>
                     </tr>
@@ -1323,6 +1361,6 @@ export function FormatPanel({ schema, onSelectFormat }: Props) {
       {importDialog}
       {convertDialog}
       {partitionDialog}
-    </div>
+    </Stack>
   );
 }

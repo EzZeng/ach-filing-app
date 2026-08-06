@@ -1,15 +1,31 @@
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  ArrowRightLeft,
-  CheckCircle2,
-  FileUp,
-  Filter,
-  ListTree,
-  Loader2,
-  Scissors,
-  X,
-} from "lucide-react";
+  Alert,
+  Backdrop,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  LinearProgress,
+  Stack,
+  Tab,
+  Tabs,
+  Typography,
+} from "@mui/material";
+import {
+  WarningAmber as AlertTriangleIcon,
+  SwapHoriz as ArrowRightLeftIcon,
+  CheckCircle as CheckCircleIcon,
+  FileUpload as FileUpIcon,
+  FilterAlt as FilterIcon,
+  ContentCut as ScissorsIcon,
+  Close as CloseIcon,
+} from "@mui/icons-material";
 import type {
   Branch,
   FormatSchema,
@@ -145,244 +161,230 @@ export function ImportPreviewDialog({
   if (!open || !result || !schema) return null;
 
   const showPreFilter = !!sourceFile && !!onFilterScan;
+  const scanPct =
+    scanProgress && scanProgress.totalBytes > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (scanProgress.bytesRead / scanProgress.totalBytes) * 100,
+          ),
+        )
+      : 0;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
-      onClick={handleClose}
-      role="presentation"
+    <Dialog
+      open={open}
+      onClose={busy ? undefined : handleClose}
+      maxWidth="lg"
+      fullWidth
+      aria-busy={busy}
+      aria-label="匯入預覽"
+      slotProps={{
+        paper: {
+          sx: {
+            position: "relative",
+            maxHeight: "90vh",
+            display: "flex",
+            flexDirection: "column",
+          },
+        },
+      }}
     >
-      <div
-        className="card relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-busy={busy}
-        aria-label="匯入預覽"
+      <Backdrop
+        open={busy}
+        sx={{
+          position: "absolute",
+          zIndex: 2,
+          bgcolor: "rgba(255,255,255,0.72)",
+          color: "text.primary",
+          flexDirection: "column",
+          gap: 1.5,
+        }}
       >
-        {busy && (
-          <div
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-surface/80 backdrop-blur-[1px]"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2 className="size-9 animate-spin text-primary" />
-            <p className="text-sm font-semibold text-fg">
-              {scanning ? "依篩選條件串流載入中…" : "套用到表單中…"}
-            </p>
-            <p className="text-xs text-muted">
-              {scanning && scanProgress
-                ? `已讀 ${
-                    scanProgress.totalBytes > 0
-                      ? `${Math.min(
-                          100,
-                          Math.round(
-                            (scanProgress.bytesRead / scanProgress.totalBytes) *
-                              100,
-                          ),
-                        )}%`
-                      : "…"
-                  } · 符合 ${scanProgress.matchedCount.toLocaleString("zh-TW")}／總計 ${scanProgress.detailCount.toLocaleString("zh-TW")}`
-                : `正在載入 ${result.matchedCount.toLocaleString("zh-TW")} 筆明細，請稍候`}
-            </p>
-          </div>
+        <CircularProgress color="primary" />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {scanning ? "依篩選條件串流載入中…" : "套用到表單中…"}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {scanning && scanProgress
+            ? `已讀 ${scanProgress.totalBytes > 0 ? `${scanPct}%` : "…"} · 符合 ${scanProgress.matchedCount.toLocaleString("zh-TW")}／總計 ${scanProgress.detailCount.toLocaleString("zh-TW")}`
+            : `正在載入 ${result.matchedCount.toLocaleString("zh-TW")} 筆明細，請稍候`}
+        </Typography>
+        {scanning && (
+          <LinearProgress
+            sx={{ width: 220, borderRadius: 1 }}
+            variant={scanProgress?.totalBytes ? "determinate" : "indeterminate"}
+            value={scanPct}
+          />
         )}
+      </Backdrop>
 
-        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <FileUp className="size-4 text-primary" />
-              <h3 className="text-base font-bold text-fg">匯入預覽</h3>
-              <span className="badge badge-ok font-mono">{schema.code}</span>
-              <span className="badge badge-warn">
-                V{schema.version.replace(/^V/i, "")}
-              </span>
-              <span className="text-xs text-muted">
-                列長 {schema.recordLength} · 明細{" "}
-                {result.detailCount.toLocaleString("zh-TW")} 筆
-                {result.filterActive
-                  ? ` · 符合 ${result.matchedCount.toLocaleString("zh-TW")}`
-                  : ""}
-                {result.fileSize > 0
-                  ? ` · ${(result.fileSize / (1024 * 1024)).toFixed(1)} MB`
-                  : ""}
-              </span>
-              {result.filterActive && (
-                <span className="badge badge-ok gap-1">
-                  <Filter className="size-3" />
-                  已套用篩選
-                </span>
-              )}
-            </div>
-            <p className="truncate text-xs text-muted" title={result.filename}>
-              {result.filename || "未命名檔案"} · {schema.shortCode}{" "}
-              {schema.name}
-              {result.detectedCode ? ` · 偵測 ${result.detectedCode}` : ""}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost px-2"
-            onClick={handleClose}
-            disabled={busy}
-            aria-label="關閉"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
-
-        {(result.errors.length > 0 ||
-          result.warnings.length > 0 ||
-          result.lengthErrorCount > 0) && (
-          <div className="space-y-1.5 border-b border-border bg-surface-2/60 px-4 py-3">
-            {result.lengthErrorCount > 0 && (
-              <div className="flex items-start gap-2 text-sm text-accent">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  列長不符 {result.lengthErrorCount.toLocaleString("zh-TW")} 筆
-                </span>
-              </div>
-            )}
-            {result.errors.map((msg) => (
-              <div
-                key={`e-${msg}`}
-                className="flex items-start gap-2 text-sm font-semibold text-danger"
-              >
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                <span>{msg}</span>
-              </div>
-            ))}
-            {result.warnings.slice(0, 6).map((msg) => (
-              <div
-                key={`w-${msg}`}
-                className="flex items-start gap-2 text-sm text-accent"
-              >
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                <span>{msg}</span>
-              </div>
-            ))}
-            {result.warnings.length > 6 && (
-              <p className="text-xs text-muted">
-                另有 {result.warnings.length - 6} 則警告…
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-1 border-b border-border px-4 pt-2">
-          {(
-            [
-              ["fields", "固定長度欄位"],
-              ["form", "表單欄位"],
-              ["raw", "原始列"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`rounded-t-md px-3 py-2 text-sm font-semibold transition ${
-                tab === id
-                  ? "bg-surface text-primary ring-1 ring-border ring-b-transparent"
-                  : "text-muted hover:text-fg"
-              }`}
-              onClick={() => setTab(id)}
-              disabled={busy}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-          {tab === "fields" && <FieldsPreview result={result} schema={schema} />}
-          {tab === "form" && (
-            <FormPreview
-              schema={schema}
-              result={result}
-              branches={branches}
-              draftFilters={draftFilters}
-              draftGlobal={draftGlobal}
-              filterEnabled={showPreFilter}
-              filterBusy={busy}
-              onFiltersChange={setDraftFilters}
-              onGlobalChange={setDraftGlobal}
-              onScan={() => void handleFilterScan()}
-              onClearFilters={() => {
-                setDraftFilters(emptyDetailFilters(schema));
-                setDraftGlobal("");
-              }}
-            />
+      <DialogTitle sx={{ pr: 6 }}>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+          <FileUpIcon color="primary" fontSize="small" />
+          <Typography variant="h6" component="span">
+            匯入預覽
+          </Typography>
+          <Chip size="small" color="success" label={schema.code} sx={{ fontFamily: "monospace" }} />
+          <Chip
+            size="small"
+            color="warning"
+            label={`V${schema.version.replace(/^V/i, "")}`}
+          />
+          <Typography variant="caption" color="text.secondary">
+            列長 {schema.recordLength} · 明細{" "}
+            {result.detailCount.toLocaleString("zh-TW")} 筆
+            {result.filterActive
+              ? ` · 符合 ${result.matchedCount.toLocaleString("zh-TW")}`
+              : ""}
+            {result.fileSize > 0
+              ? ` · ${(result.fileSize / (1024 * 1024)).toFixed(1)} MB`
+              : ""}
+          </Typography>
+          {result.filterActive && (
+            <Chip size="small" color="success" icon={<FilterIcon />} label="已套用篩選" />
           )}
-          {tab === "raw" && <RawPreview result={result} schema={schema} />}
-        </div>
+        </Stack>
+        <Typography variant="caption" color="text.secondary" noWrap title={result.filename} sx={{ display: "block" }}>
+          {result.filename || "未命名檔案"} · {schema.shortCode} {schema.name}
+          {result.detectedCode ? ` · 偵測 ${result.detectedCode}` : ""}
+        </Typography>
+        <IconButton
+          aria-label="關閉"
+          onClick={handleClose}
+          disabled={busy}
+          sx={{ position: "absolute", right: 8, top: 8 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
-          <p className="text-xs text-muted">
-            {result.tooLargeForForm
-              ? result.filterActive
-                ? "符合筆數仍超過上限，請在明細表頭縮小篩選後再套用"
-                : "請在明細表頭輸入篩選條件並套用，或使用分割大檔／大檔轉 R01"
-              : result.filterActive
-                ? `將套用篩選後的 ${result.matchedCount.toLocaleString("zh-TW")} 筆到「${schema.code}」表單`
-                : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {sourceFile && onPartition ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={busy || result.detailCount === 0}
-                onClick={onPartition}
-                title="分割成 y 個小檔並建立 index"
-              >
-                <Scissors className="size-4" />
-                分割大檔
-              </button>
-            ) : null}
-            {sourceFile &&
-            onLargeConvertR01 &&
-            schema.code === "ACHP01" ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={busy || result.detailCount === 0}
-                onClick={onLargeConvertR01}
-                title="串流分塊轉 R01 後合併輸出"
-              >
-                <ArrowRightLeft className="size-4" />
-                大檔轉 R01
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleClose}
-              disabled={busy}
+      {(result.errors.length > 0 ||
+        result.warnings.length > 0 ||
+        result.lengthErrorCount > 0) && (
+        <Box sx={{ px: 3, pb: 1.5, display: "grid", gap: 1 }}>
+          {result.lengthErrorCount > 0 && (
+            <Alert severity="warning" icon={<AlertTriangleIcon fontSize="inherit" />}>
+              列長不符 {result.lengthErrorCount.toLocaleString("zh-TW")} 筆
+            </Alert>
+          )}
+          {result.errors.map((msg) => (
+            <Alert key={`e-${msg}`} severity="error" icon={<AlertTriangleIcon fontSize="inherit" />}>
+              {msg}
+            </Alert>
+          ))}
+          {result.warnings.slice(0, 6).map((msg) => (
+            <Alert key={`w-${msg}`} severity="warning" icon={<AlertTriangleIcon fontSize="inherit" />}>
+              {msg}
+            </Alert>
+          ))}
+          {result.warnings.length > 6 && (
+            <Typography variant="caption" color="text.secondary">
+              另有 {result.warnings.length - 6} 則警告…
+            </Typography>
+          )}
+        </Box>
+      )}
+
+      <Tabs
+        value={tab}
+        onChange={(_, v: PreviewTab) => setTab(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ px: 2, borderBottom: 1, borderColor: "divider", minHeight: 44 }}
+      >
+        <Tab value="fields" label="固定長度欄位" disabled={busy} />
+        <Tab value="form" label="表單欄位" disabled={busy} />
+        <Tab value="raw" label="原始列" disabled={busy} />
+      </Tabs>
+
+      <DialogContent dividers sx={{ flex: 1, minHeight: 0 }}>
+        {tab === "fields" && <FieldsPreview result={result} schema={schema} />}
+        {tab === "form" && (
+          <FormPreview
+            schema={schema}
+            result={result}
+            branches={branches}
+            draftFilters={draftFilters}
+            draftGlobal={draftGlobal}
+            filterEnabled={showPreFilter}
+            filterBusy={busy}
+            onFiltersChange={setDraftFilters}
+            onGlobalChange={setDraftGlobal}
+            onScan={() => void handleFilterScan()}
+            onClearFilters={() => {
+              setDraftFilters(emptyDetailFilters(schema));
+              setDraftGlobal("");
+            }}
+          />
+        )}
+        {tab === "raw" && <RawPreview result={result} schema={schema} />}
+      </DialogContent>
+
+      <DialogActions
+        sx={{
+          px: 3,
+          py: 2,
+          flexWrap: "wrap",
+          gap: 1,
+          justifyContent: "space-between",
+        }}
+      >
+        <Typography variant="caption" color="text.secondary" sx={{ flex: "1 1 200px" }}>
+          {result.tooLargeForForm
+            ? result.filterActive
+              ? "符合筆數仍超過上限，請在明細表頭縮小篩選後再套用"
+              : "請在明細表頭輸入篩選條件並套用，或使用分割大檔／大檔轉 R01"
+            : result.filterActive
+              ? `將套用篩選後的 ${result.matchedCount.toLocaleString("zh-TW")} 筆到「${schema.code}」表單`
+              : `套用後會覆寫「${schema.code}」目前的提出資料與明細`}
+        </Typography>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+          {sourceFile && onPartition ? (
+            <Button
+              variant="outlined"
+              startIcon={<ScissorsIcon />}
+              disabled={busy || result.detailCount === 0}
+              onClick={onPartition}
             >
-              {result.tooLargeForForm && !result.filterActive ? "關閉" : "取消"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!canApply}
-              onClick={() => void handleApply()}
-              title={
-                result.tooLargeForForm
-                  ? `超過 ${IMPORT_LIMITS.maxFormDetailRows} 筆上限`
-                  : undefined
-              }
+              分割大檔
+            </Button>
+          ) : null}
+          {sourceFile && onLargeConvertR01 && schema.code === "ACHP01" ? (
+            <Button
+              variant="outlined"
+              startIcon={<ArrowRightLeftIcon />}
+              disabled={busy || result.detailCount === 0}
+              onClick={onLargeConvertR01}
             >
-              {applying ? (
-                <Loader2 className="size-4 animate-spin" />
+              大檔轉 R01
+            </Button>
+          ) : null}
+          <Button variant="outlined" onClick={handleClose} disabled={busy}>
+            {result.tooLargeForForm && !result.filterActive ? "關閉" : "取消"}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!canApply}
+            onClick={() => void handleApply()}
+            startIcon={
+              applying ? (
+                <CircularProgress size={16} color="inherit" />
               ) : (
-                <CheckCircle2 className="size-4" />
-              )}
-              {applying ? "套用中…" : "套用到表單"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+                <CheckCircleIcon />
+              )
+            }
+            title={
+              result.tooLargeForForm
+                ? `超過 ${IMPORT_LIMITS.maxFormDetailRows} 筆上限`
+                : undefined
+            }
+          >
+            {applying ? "套用中…" : "套用到表單"}
+          </Button>
+        </Stack>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -409,7 +411,7 @@ function RecordFieldsTable({
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <ListTree className="size-4 text-primary" />
+        <FileUpIcon fontSize="small" color="primary" />
         <h4 className="text-sm font-bold">{title}</h4>
         <span className={`badge ${line.lengthOk ? "badge-ok" : "badge-err"}`}>
           長度 {line.length}
@@ -591,7 +593,7 @@ function FormPreview({
                 disabled={filterBusy || !filtersReady}
                 onClick={onScan}
               >
-                <Filter className="size-3.5" />
+                <FilterIcon sx={{ fontSize: 16 }} />
                 {filtersDirty ? "套用篩選" : "套用篩選並載入"}
               </button>
               {filtersReady ? (

@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+release/.chromium-portable-work/
 .output/
 *.log
 .DS_Store

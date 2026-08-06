@@ -25,7 +25,8 @@
     "pack:web": "node scripts/build-customer.mjs",
     "preview:web": "vite preview --config vite.static.config.ts",
     "dev:web": "vite --config vite.static.config.ts",
-    "build:customer": "node scripts/build-customer.mjs"
+    "build:customer": "node scripts/build-customer.mjs",
+    "chromium:portable:win": "node tools/chromium-windows-portable/scripts/package-from-snapshot.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.3",

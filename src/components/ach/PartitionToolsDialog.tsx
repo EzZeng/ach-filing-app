@@ -1,11 +1,31 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  Combine,
-  Loader2,
-  Scissors,
-  X,
-  ArrowRightLeft,
-} from "lucide-react";
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  IconButton,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
+import {
+  Close as CloseIcon,
+  ContentCut as ScissorsIcon,
+  MergeType as CombineIcon,
+  SwapHoriz as ArrowRightLeftIcon,
+} from "@mui/icons-material";
 import { toast } from "sonner";
 import type { Branch, FormatSchema, Txid } from "@/lib/ach/schema";
 import {
@@ -100,14 +120,19 @@ export function PartitionToolsDialog({
   const [mergeFiles, setMergeFiles] = useState<File[]>([]);
   const [mergeConvert, setMergeConvert] = useState(false);
 
-  if (!open) return null;
-
   const title =
     mode === "split"
       ? "分割大檔＋建立索引"
       : mode === "merge"
         ? "合併分割檔"
         : "大檔轉 R01（分塊→合併）";
+
+  const TitleIcon =
+    mode === "split"
+      ? ScissorsIcon
+      : mode === "merge"
+        ? CombineIcon
+        : ArrowRightLeftIcon;
 
   async function handleSplit() {
     if (!sourceFile) {
@@ -189,7 +214,6 @@ export function PartitionToolsDialog({
           `已分割 ${index.partCount} 包（共 ${index.totalDetailCount.toLocaleString("zh-TW")} 筆），已載入第 1 包供編輯`,
         );
       } else if (!alsoDownload) {
-        // 僅下載模式但使用者取消勾選下載——仍強制下載
         toast.message("已分割（未勾選下載）");
       }
       onClose();
@@ -333,106 +357,129 @@ export function PartitionToolsDialog({
           : "合併中…"
     : null;
 
+  const primaryLabel =
+    mode === "split"
+      ? openForEdit
+        ? "分割並開始編輯"
+        : "分割並下載"
+      : mode === "merge"
+        ? mergeConvert
+          ? "合併並轉 R01"
+          : "合併下載"
+        : "開始大檔轉 R01";
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative w-full max-w-lg rounded-xl border border-border bg-surface shadow-xl"
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold">
-              {mode === "split" ? (
-                <Scissors className="size-4 text-primary" />
-              ) : mode === "merge" ? (
-                <Combine className="size-4 text-primary" />
-              ) : (
-                <ArrowRightLeft className="size-4 text-primary" />
-              )}
+    <Dialog
+      open={open}
+      onClose={busy ? undefined : onClose}
+      maxWidth="sm"
+      fullWidth
+      aria-labelledby="partition-tools-title"
+      slotProps={{
+        paper: {
+          sx: { position: "relative" },
+        },
+      }}
+    >
+      <DialogTitle id="partition-tools-title" sx={{ pr: 6 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: "flex-start" }}
+        >
+          <TitleIcon color="primary" sx={{ mt: 0.25 }} />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="h6" component="span" sx={{ display: "block" }}>
               {title}
-            </h2>
-            <p className="mt-1 text-xs text-muted">
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {mode === "split" &&
                 "將 x 筆切成 y 包；預設在網頁逐包載入編輯（每包 ≤ 可編輯上限），也可另存 ZIP。"}
               {mode === "merge" &&
                 "選擇索引 JSON 與全部 part*.txt，合併回單一 ACH 大檔（可順便轉 R01）。"}
               {mode === "convert" &&
                 "不經表單：串流分塊轉 ACHR01；多檔結果打包 ZIP 或寫入同一資料夾。"}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost !px-2"
-            onClick={onClose}
-            disabled={busy}
-            aria-label="關閉"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+            </Typography>
+          </Box>
+        </Stack>
+        <IconButton
+          aria-label="關閉"
+          onClick={onClose}
+          disabled={busy}
+          sx={{ position: "absolute", right: 8, top: 8 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
 
-        <div className="space-y-3 px-4 py-4">
+      <DialogContent dividers>
+        <Stack spacing={2.5}>
           {mode === "split" && (
             <>
-              <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-muted">
+              <Alert severity="info" variant="outlined" sx={{ alignItems: "flex-start" }}>
                 來源{" "}
-                <span className="font-mono text-fg">
+                <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>
                   {sourceFile?.name ?? "—"}
-                </span>
+                </Box>
                 {detailCount > 0
                   ? ` · ${detailCount.toLocaleString("zh-TW")} 筆`
                   : ""}
                 。分割檔數無上限（至多等於明細筆數）。
-              </p>
-              <label className="block space-y-1">
-                <span className="text-xs font-medium">分割檔數 y</span>
-                <input
-                  type="number"
-                  min={1}
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-                  value={partCount}
-                  onChange={(e) =>
-                    setPartCount(Number(e.target.value) || 1)
-                  }
-                  disabled={busy}
-                />
-                <span className="block text-[11px] text-muted">
-                  建議至少 {suggested.partCount || 1} 包（每包 ≤{" "}
-                  {IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")}{" "}
-                  筆才能在網頁編輯）；檔數不設上限
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={openForEdit}
-                  onChange={(e) => setOpenForEdit(e.target.checked)}
-                  disabled={busy}
-                />
-                <span>
-                  <span className="font-medium text-fg">分割後在網頁編輯</span>
-                  <span className="block text-muted">
-                    開啟分割工作區，逐包載入表單修改，再「合併全部輸出」
-                  </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={alsoDownload || !openForEdit}
-                  onChange={(e) => setAlsoDownload(e.target.checked)}
-                  disabled={busy || !openForEdit}
-                />
-                <span>
-                  <span className="font-medium text-fg">同時下載 ZIP／資料夾</span>
-                  <span className="block text-muted">
-                    未勾選「網頁編輯」時會自動下載
-                  </span>
-                </span>
-              </label>
+              </Alert>
+
+              <TextField
+                label="分割檔數 y"
+                type="number"
+                fullWidth
+                size="small"
+                slotProps={{ htmlInput: { min: 1 } }}
+                value={partCount}
+                onChange={(e) => setPartCount(Number(e.target.value) || 1)}
+                disabled={busy}
+                helperText={`建議至少 ${suggested.partCount || 1} 包（每包 ≤ ${IMPORT_LIMITS.maxFormDetailRows.toLocaleString("zh-TW")} 筆才能在網頁編輯）；檔數不設上限`}
+              />
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={openForEdit}
+                    onChange={(e) => setOpenForEdit(e.target.checked)}
+                    disabled={busy}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      分割後在網頁編輯
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                      開啟分割工作區，逐包載入表單修改，再「合併全部輸出」
+                    </Typography>
+                  </Box>
+                }
+                sx={{ alignItems: "flex-start", m: 0 }}
+              />
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={alsoDownload || !openForEdit}
+                    onChange={(e) => setAlsoDownload(e.target.checked)}
+                    disabled={busy || !openForEdit}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      同時下載 ZIP／資料夾
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                      未勾選「網頁編輯」時會自動下載
+                    </Typography>
+                  </Box>
+                }
+                sx={{ alignItems: "flex-start", m: 0 }}
+              />
             </>
           )}
 
@@ -443,35 +490,57 @@ export function PartitionToolsDialog({
                 type="file"
                 multiple
                 accept=".txt,.json,text/plain,application/json"
-                className="hidden"
+                hidden
                 onChange={(e) =>
                   setMergeFiles(Array.from(e.target.files ?? []))
                 }
               />
-              <button
-                type="button"
-                className="btn btn-secondary w-full"
+              <Button
+                variant="outlined"
+                fullWidth
                 disabled={busy}
                 onClick={() => mergeInputRef.current?.click()}
               >
                 選擇索引 JSON ＋ 分割 txt（可多選）
-              </button>
+              </Button>
               {mergeFiles.length > 0 && (
-                <ul className="max-h-32 overflow-auto rounded-md border border-border bg-surface-2 px-3 py-2 text-xs font-mono">
+                <List
+                  dense
+                  sx={{
+                    maxHeight: 160,
+                    overflow: "auto",
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    bgcolor: "grey.50",
+                    py: 0,
+                  }}
+                >
                   {mergeFiles.map((f) => (
-                    <li key={f.name}>{f.name}</li>
+                    <ListItem key={f.name} dense>
+                      <ListItemText
+                        primary={f.name}
+                        slotProps={{
+                          primary: {
+                            variant: "caption",
+                            sx: { fontFamily: "monospace" },
+                          },
+                        }}
+                      />
+                    </ListItem>
                   ))}
-                </ul>
+                </List>
               )}
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={mergeConvert}
-                  onChange={(e) => setMergeConvert(e.target.checked)}
-                  disabled={busy}
-                />
-                合併時一併轉成 ACHR01（來源須為 ACHP01 分割）
-              </label>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={mergeConvert}
+                    onChange={(e) => setMergeConvert(e.target.checked)}
+                    disabled={busy}
+                  />
+                }
+                label="合併時一併轉成 ACHR01（來源須為 ACHP01 分割）"
+              />
               {mergeConvert && (
                 <ConvertFields
                   rcode={rcode}
@@ -488,15 +557,15 @@ export function PartitionToolsDialog({
 
           {mode === "convert" && (
             <>
-              <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-muted">
+              <Alert severity="info" variant="outlined">
                 來源{" "}
-                <span className="font-mono text-fg">
+                <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>
                   {sourceFile?.name ?? "—"}
-                </span>
+                </Box>
                 {detailCount > 0
                   ? ` · ${detailCount.toLocaleString("zh-TW")} 筆`
                   : ""}
-              </p>
+              </Alert>
               <ConvertFields
                 rcode={rcode}
                 ydate={ydate}
@@ -510,48 +579,43 @@ export function PartitionToolsDialog({
           )}
 
           {progressLabel && (
-            <p className="flex items-center gap-2 text-xs text-muted">
-              <Loader2 className="size-3.5 animate-spin" />
-              {progressLabel}
-            </p>
+            <Box>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ alignItems: "center", mb: 1 }}
+              >
+                <CircularProgress size={16} />
+                <Typography variant="caption" color="text.secondary">
+                  {progressLabel}
+                </Typography>
+              </Stack>
+              <LinearProgress />
+            </Box>
           )}
-        </div>
+        </Stack>
+      </DialogContent>
 
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onClose}
-            disabled={busy}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={() => {
-              if (mode === "split") void handleSplit();
-              else if (mode === "merge") void handleMerge();
-              else void handleLargeConvert();
-            }}
-          >
-            {busy ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                處理中…
-              </>
-            ) : mode === "split" ? (
-              openForEdit ? "分割並開始編輯" : "分割並下載"
-            ) : mode === "merge" ? (
-              mergeConvert ? "合併並轉 R01" : "合併下載"
-            ) : (
-              "開始大檔轉 R01"
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
+      <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        <Button onClick={onClose} disabled={busy} color="inherit">
+          取消
+        </Button>
+        <Button
+          variant="contained"
+          disabled={busy}
+          startIcon={
+            busy ? <CircularProgress size={16} color="inherit" /> : undefined
+          }
+          onClick={() => {
+            if (mode === "split") void handleSplit();
+            else if (mode === "merge") void handleMerge();
+            else void handleLargeConvert();
+          }}
+        >
+          {busy ? "處理中…" : primaryLabel}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -574,44 +638,47 @@ function ConvertFields({
 }) {
   const rDigits = safeDigits(rcode).padStart(2, "0").slice(-2);
   return (
-    <div className="space-y-3">
-      <label className="block space-y-1">
-        <span className="text-xs font-medium">退件理由代號</span>
-        <select
-          className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-          value={rDigits}
-          onChange={(e) => onRcode(e.target.value)}
+    <Stack spacing={2}>
+      <TextField
+        select
+        label="退件理由代號"
+        fullWidth
+        size="small"
+        value={rDigits}
+        onChange={(e) => onRcode(e.target.value)}
+        disabled={busy}
+      >
+        {RETURN_CODES.map((c) => (
+          <MenuItem key={c.code} value={c.code}>
+            {c.label}
+          </MenuItem>
+        ))}
+      </TextField>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+      >
+        <TextField
+          label="PDATE"
+          fullWidth
+          size="small"
+          slotProps={{ htmlInput: { maxLength: 8 } }}
+          value={pdate}
+          onChange={(e) => onPdate(safeDigits(e.target.value).slice(0, 8))}
           disabled={busy}
-        >
-          {RETURN_CODES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block space-y-1">
-          <span className="text-xs font-medium">PDATE</span>
-          <input
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-            maxLength={8}
-            value={pdate}
-            onChange={(e) => onPdate(safeDigits(e.target.value).slice(0, 8))}
-            disabled={busy}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-medium">YDATE</span>
-          <input
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-            maxLength={8}
-            value={ydate}
-            onChange={(e) => onYdate(safeDigits(e.target.value).slice(0, 8))}
-            disabled={busy}
-          />
-        </label>
-      </div>
-    </div>
+          sx={{ "& input": { fontFamily: "monospace" } }}
+        />
+        <TextField
+          label="YDATE"
+          fullWidth
+          size="small"
+          slotProps={{ htmlInput: { maxLength: 8 } }}
+          value={ydate}
+          onChange={(e) => onYdate(safeDigits(e.target.value).slice(0, 8))}
+          disabled={busy}
+          sx={{ "& input": { fontFamily: "monospace" } }}
+        />
+      </Stack>
+    </Stack>
   );
 }

@@ -1,5 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, Loader2, X } from "lucide-react";
+import {
+  Alert,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
+import {
+  Close as CloseIcon,
+  SwapHoriz as ArrowRightLeftIcon,
+} from "@mui/icons-material";
 import { RETURN_CODES } from "@/lib/ach/convertR01";
 import { prevRocDate, safeDigits } from "@/lib/ach/utils";
 
@@ -40,8 +57,6 @@ export function ConvertR01Dialog({
     setPdate(safeDigits(tdate));
   }, [open, tdate]);
 
-  if (!open) return null;
-
   const yDigits = safeDigits(ydate);
   const pDigits = safeDigits(pdate);
   const rDigits = safeDigits(rcode).padStart(2, "0").slice(-2);
@@ -53,128 +68,108 @@ export function ConvertR01Dialog({
     pDigits.length === 8;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="convert-r01-title"
-        className="relative w-full max-w-lg rounded-xl border border-border bg-surface shadow-xl"
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <div>
-            <h2
-              id="convert-r01-title"
-              className="flex items-center gap-2 text-base font-semibold"
-            >
-              <ArrowRightLeft className="size-4 text-primary" />
+    <Dialog
+      open={open}
+      onClose={busy ? undefined : onClose}
+      maxWidth="sm"
+      fullWidth
+      aria-labelledby="convert-r01-title"
+    >
+      <DialogTitle id="convert-r01-title" sx={{ pr: 6 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
+          <ArrowRightLeftIcon color="primary" sx={{ mt: 0.25 }} />
+          <Stack spacing={0.5}>
+            <Typography variant="h6" component="span">
               轉檔 P01 → R01（提回／退件）
-            </h2>
-            <p className="mt-1 text-xs text-muted">
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
               依財金 ACHP01/ACHR01 規格：TYPE=R、對調提出／提回行與帳號，並填入退件欄位。
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost !px-2"
-            onClick={onClose}
-            disabled={busy}
-            aria-label="關閉"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+            </Typography>
+          </Stack>
+        </Stack>
+        <IconButton
+          aria-label="關閉"
+          onClick={onClose}
+          disabled={busy}
+          sx={{ position: "absolute", right: 8, top: 8 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
 
-        <div className="space-y-3 px-4 py-4">
-          <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-muted">
+      <DialogContent dividers>
+        <Stack spacing={2.5}>
+          <Alert severity="info" variant="outlined">
             將轉換{" "}
-            <span className="font-semibold text-fg">
-              {detailCount.toLocaleString("zh-TW")}
-            </span>{" "}
+            <strong>{detailCount.toLocaleString("zh-TW")}</strong>{" "}
             筆有效明細；若含多個收受行，會依退件行分檔下載。
-          </p>
+          </Alert>
 
-          <label className="block space-y-1">
-            <span className="text-xs font-medium text-fg">退件理由代號</span>
-            <select
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-              value={rDigits}
-              onChange={(e) => setRcode(e.target.value)}
-              disabled={busy}
-            >
-              {RETURN_CODES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-fg">
-                原提示交易日期（PDATE）
-              </span>
-              <input
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-                inputMode="numeric"
-                maxLength={8}
-                value={pdate}
-                onChange={(e) => setPdate(safeDigits(e.target.value).slice(0, 8))}
-                disabled={busy}
-                placeholder="01150804"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-fg">
-                前一營業日（YDATE）
-              </span>
-              <input
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
-                inputMode="numeric"
-                maxLength={8}
-                value={ydate}
-                onChange={(e) => setYdate(safeDigits(e.target.value).slice(0, 8))}
-                disabled={busy}
-                placeholder="01150803"
-              />
-              <span className="block text-[11px] text-muted">
-                預設為處理日前一日（非營業日曆）
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onClose}
+          <TextField
+            select
+            label="退件理由代號"
+            fullWidth
+            size="small"
+            value={rDigits}
+            onChange={(e) => setRcode(e.target.value)}
             disabled={busy}
           >
-            取消
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!canSubmit}
-            onClick={() =>
-              void onConfirm({ rcode: rDigits, ydate: yDigits, pdate: pDigits })
-            }
-          >
-            {busy ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                轉檔中…
-              </>
+            {RETURN_CODES.map((c) => (
+              <MenuItem key={c.code} value={c.code}>
+                {c.label}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <TextField
+              label="原提示交易日期（PDATE）"
+              fullWidth
+              size="small"
+              slotProps={{ htmlInput: { maxLength: 8, inputMode: "numeric" } }}
+              value={pdate}
+              onChange={(e) => setPdate(safeDigits(e.target.value).slice(0, 8))}
+              disabled={busy}
+              placeholder="01150804"
+              sx={{ "& input": { fontFamily: "monospace" } }}
+            />
+            <TextField
+              label="前一營業日（YDATE）"
+              fullWidth
+              size="small"
+              slotProps={{ htmlInput: { maxLength: 8, inputMode: "numeric" } }}
+              value={ydate}
+              onChange={(e) => setYdate(safeDigits(e.target.value).slice(0, 8))}
+              disabled={busy}
+              placeholder="01150803"
+              helperText="預設為處理日前一日（非營業日曆）"
+              sx={{ "& input": { fontFamily: "monospace" } }}
+            />
+          </Stack>
+        </Stack>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        <Button onClick={onClose} disabled={busy} color="inherit">
+          取消
+        </Button>
+        <Button
+          variant="contained"
+          disabled={!canSubmit}
+          startIcon={
+            busy ? (
+              <CircularProgress size={16} color="inherit" />
             ) : (
-              <>
-                <ArrowRightLeft className="size-4" />
-                產生 ACHR01
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
+              <ArrowRightLeftIcon />
+            )
+          }
+          onClick={() =>
+            void onConfirm({ rcode: rDigits, ydate: yDigits, pdate: pDigits })
+          }
+        >
+          {busy ? "轉檔中…" : "產生 ACHR01"}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
